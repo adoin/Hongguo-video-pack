@@ -4,6 +4,7 @@ import 'data/hongguo_client.dart';
 import 'domain/drama.dart';
 import 'services/episode_preloader.dart';
 import 'data/visitor_identity.dart';
+import 'services/app_logs.dart';
 
 abstract class PlaybackEngine {
   Stream<bool> get completed;
@@ -29,8 +30,9 @@ class PlaybackController extends ChangeNotifier {
         unawaited(play(index + 1));
       }
     });
-    _errors = engine.errors.listen((_) {
+    _errors = engine.errors.listen((failure) {
       if (_disposed || loading) return;
+      AppLogs.shared.add(LogLevel.error, '播放器', '播放引擎错误', error: failure);
       error = '播放失败，请重试或切换清晰度。';
       notifyListeners();
     });
@@ -102,7 +104,8 @@ class PlaybackController extends ChangeNotifier {
       _ready = cached;
       _readyOptions = cached == null ? null : options;
       _readyIndex = cached == null ? null : next;
-    } catch (_) {
+    } catch (failure) {
+      AppLogs.shared.add(LogLevel.warning, '预加载', '下一集预加载失败', error: failure);
       /* Playback continues with a fresh stream if preloading fails. */
     }
   }
@@ -144,8 +147,9 @@ class PlaybackController extends ChangeNotifier {
         restored = value.episodes.indexWhere((e) => e.number == episode);
       }
       await play(restored < 0 ? 0 : restored, start: start);
-    } catch (_) {
+    } catch (failure) {
       if (_disposed || generation != _generation) return;
+      AppLogs.shared.add(LogLevel.error, '播放', '分集读取失败', error: failure);
       error = '读取分集失败，请重试。';
       loading = false;
       notifyListeners();
@@ -208,6 +212,7 @@ class PlaybackController extends ChangeNotifier {
       loading = false;
       notifyListeners();
     } catch (failure) {
+      AppLogs.shared.add(LogLevel.error, '播放', '播放准备失败', error: failure);
       if (!identical(_playingFile, cached)) await cached?.dispose();
       if (_disposed || generation != _generation) return;
       error = failure is VisitorInitializationException

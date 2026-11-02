@@ -7,6 +7,7 @@ import '../domain/drama.dart';
 import 'request_signer.dart';
 import 'media_crypto.dart';
 import 'visitor_identity.dart';
+import '../services/app_logs.dart';
 
 typedef Json = Map<String, dynamic>;
 Json object(dynamic value) =>
@@ -75,7 +76,7 @@ class HongguoClient {
     http.Client? client,
     RequestSigner? signer,
     VisitorIdentityProvider? identities,
-  }) : _http = client ?? http.Client(),
+  }) : _http = client ?? LoggedHttpClient(),
        identities = identities ?? VisitorIdentityStore.shared,
        signer = signer ?? NativeRequestSigner();
   final http.Client _http;

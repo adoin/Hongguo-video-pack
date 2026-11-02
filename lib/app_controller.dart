@@ -10,6 +10,7 @@ import 'services/media_engine.dart';
 import 'data/request_signer.dart';
 import 'data/visitor_identity.dart';
 import 'watch_history.dart';
+import 'services/app_logs.dart';
 
 class StudioController extends ChangeNotifier {
   StudioController({HongguoClient? client, MediaEngine? engine})
@@ -94,7 +95,14 @@ class StudioController extends ChangeNotifier {
         }
         if (data['busy'] == true) status = '上次任务已中断；重新读取后可继续，已下载分集会自动复用。';
       }
-    } catch (_) {
+    } catch (failure, stack) {
+      AppLogs.shared.add(
+        LogLevel.warning,
+        '设置',
+        '工作区配置读取失败',
+        error: failure,
+        stack: stack,
+      );
       status = '已恢复默认设置，现有导出文件不受影响。';
     }
     await Directory(outputDirectory).create(recursive: true);
@@ -143,7 +151,14 @@ class StudioController extends ChangeNotifier {
         final temp = File('${store.path}.tmp');
         await temp.writeAsString(payload, flush: true);
         await temp.rename(store.path);
-      } catch (_) {
+      } catch (failure, stack) {
+        AppLogs.shared.add(
+          LogLevel.error,
+          '设置',
+          '工作区配置保存失败',
+          error: failure,
+          stack: stack,
+        );
         /* Media export remains valid even if preferences cannot be saved. */
       }
     });
@@ -168,6 +183,7 @@ class StudioController extends ChangeNotifier {
   }
 
   void log(String message) {
+    AppLogs.shared.add(LogLevel.info, '任务', message);
     events.insert(
       0,
       '${DateTime.now().toIso8601String().substring(11, 19)}  $message',
@@ -211,6 +227,7 @@ class StudioController extends ChangeNotifier {
     } catch (e) {
       error = friendlyError(e);
       log('读取失败，请检查链接或稍后重试');
+      AppLogs.shared.add(LogLevel.error, '剧集', '剧集读取失败', error: e);
     } finally {
       loading = false;
       notifyListeners();
@@ -230,6 +247,7 @@ class StudioController extends ChangeNotifier {
       quality = 0;
       error = friendlyError(e);
       log('取流暂不可用，可重试检测');
+      AppLogs.shared.add(LogLevel.error, '取流', '画质检测失败', error: e);
     }
   }
 
@@ -459,6 +477,7 @@ class StudioController extends ChangeNotifier {
     } catch (e) {
       error = friendlyError(e);
       log('任务未完成；已下载分集保留，可重新执行');
+      AppLogs.shared.add(LogLevel.error, '任务', '拼接任务失败', error: e);
     } finally {
       if (Platform.isAndroid) {
         try {

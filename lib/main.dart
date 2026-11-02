@@ -24,6 +24,9 @@ import 'services/history_acceptance.dart';
 import 'services/app_updater.dart';
 import 'update_view.dart';
 import 'services/update_acceptance.dart';
+import 'services/app_logs.dart';
+import 'services/webdav_sync.dart';
+import 'settings_view.dart';
 
 const accent = Color(0xFFC20032);
 const ink = Color(0xFF24242D);
@@ -34,6 +37,29 @@ bool get desktop => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
 Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
+  final previousErrors = FlutterError.onError;
+  FlutterError.onError = (details) {
+    AppLogs.shared.add(
+      LogLevel.error,
+      'Flutter',
+      '界面异常',
+      error: details.exception,
+      stack: details.stack,
+    );
+    previousErrors?.call(details);
+  };
+  final previousPlatformErrors =
+      WidgetsBinding.instance.platformDispatcher.onError;
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    AppLogs.shared.add(
+      LogLevel.error,
+      '运行时',
+      '未处理异常',
+      error: error,
+      stack: stack,
+    );
+    return previousPlatformErrors?.call(error, stack) ?? false;
+  };
   MediaKit.ensureInitialized();
   if (desktop) {
     await windowManager.ensureInitialized();
@@ -169,6 +195,23 @@ class StudioHome extends StatefulWidget {
 class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
   late final StudioController c = widget.controller ?? StudioController();
   late final updater = widget.updater ?? AppUpdater();
+  late final webdav = WebDavSync(history: c.watchHistory);
+  Future<void>? _preparation;
+
+  Future<void> _showSettings() async {
+    await (_preparation ?? Future<void>.value());
+    await webdav.initialize();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(
+          history: c.watchHistory,
+          sync: webdav,
+          logs: AppLogs.shared,
+        ),
+      ),
+    );
+  }
 
   Future<void> _checkUpdates({bool automatic = false}) async {
     await updater.check();
@@ -203,6 +246,7 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
             child: const Text('稍后'),
           ),
           FilledButton(
+            style: updateActionButtonStyle,
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('查看更新'),
           ),
@@ -281,7 +325,47 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
     );
   }
 
-  void _resume(WatchPoint point) {
+  Future<void> _resume(WatchPoint point) async {
+    if (point.local &&
+        (point.path.isEmpty || !await File(point.path).exists())) {
+      try {
+        final selected = await FilePicker.platform.pickFiles(
+          type: FileType.video,
+        );
+        final chosen = selected?.files.single.path;
+        if (chosen == null) return;
+        var path = chosen;
+        if (Platform.isAndroid) {
+          final root = await appSupportDirectory();
+          final directory = await Directory(
+            p.join(root.path, 'data', 'linked-videos'),
+          ).create(recursive: true);
+          final destination = p.join(
+            directory.path,
+            '${point.fileId}${p.extension(chosen)}',
+          );
+          if (chosen != destination) await File(chosen).copy(destination);
+          path = destination;
+        }
+        point = point.copy()..path = path;
+        c.watchHistory.linkFile(point, path);
+      } catch (error, stack) {
+        AppLogs.shared.add(
+          LogLevel.error,
+          '观看记录',
+          '本地视频关联失败',
+          error: error,
+          stack: stack,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('无法关联本地视频，请重试。')));
+        }
+        return;
+      }
+    }
+    if (!mounted) return;
     _playDrama(
       DramaSummary(id: point.dramaId, title: point.title, cover: point.cover),
       resume: point,
@@ -301,8 +385,13 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(c.watchHistory.pruneMissing());
+      webdav.resume();
     }
-    if (state == AppLifecycleState.paused) unawaited(c.watchHistory.flush());
+    if (state == AppLifecycleState.paused) {
+      unawaited(c.watchHistory.flush());
+      unawaited(AppLogs.shared.flush());
+      unawaited(webdav.sync());
+    }
   }
 
   Future<bool> _startPlaybackStitch(
@@ -380,6 +469,7 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
       await c.cancel();
     }
     await c.flush();
+    await AppLogs.shared.flush();
     await windowManager.close();
   }
 
@@ -400,7 +490,7 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     if (widget.controller == null) {
-      _prepare();
+      _preparation = _prepare();
       discovery.refresh();
       unawaited(_checkUpdates(automatic: true));
     } else if (widget.updater != null) {
@@ -411,6 +501,9 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
   Future<void> _prepare() async {
     try {
       final support = await appSupportDirectory();
+      await AppLogs.shared.initialize(
+        File(p.join(support.path, 'data', 'developer-logs.json')),
+      );
       discovery.client.indexCache = File(
         p.join(support.path, 'catalogue-v1.json'),
       );
@@ -420,6 +513,7 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
         );
       } catch (_) {
         c.log('本机搜索初始化信息无法读取，当前使用网页搜索。');
+        AppLogs.shared.add(LogLevel.warning, '搜索', '旧访客配置无法读取，使用网页搜索。');
       }
       final docs = Platform.isAndroid
           ? support
@@ -431,9 +525,11 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
             ? p.join(docs.path, 'exports')
             : p.join(docs.path, 'Hongguo Studio', 'exports'),
       );
+      await webdav.initialize();
       if (!mounted) return;
       link.text = c.lastInput;
     } catch (_) {
+      AppLogs.shared.add(LogLevel.error, '启动', '本地目录或设置初始化失败。');
       if (mounted) c.log('无法准备导出目录，请选择可写目录。');
     }
   }
@@ -441,6 +537,7 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    webdav.dispose();
     if (widget.updater == null) updater.dispose();
     link.dispose();
     scroll.dispose();
@@ -462,7 +559,14 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
           .toList();
       if (paths.length != result.files.length) throw StateError('部分素材无法读取');
       if (mounted) c.addFiles(paths);
-    } catch (_) {
+    } catch (failure, stack) {
+      AppLogs.shared.add(
+        LogLevel.error,
+        '本地素材',
+        '导入视频失败',
+        error: failure,
+        stack: stack,
+      );
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -509,7 +613,14 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
       if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
         throw StateError('没有可打开此链接的应用');
       }
-    } catch (_) {
+    } catch (failure, stack) {
+      AppLogs.shared.add(
+        LogLevel.warning,
+        '打开链接',
+        '打开链接或文件失败',
+        error: failure,
+        stack: stack,
+      );
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -531,7 +642,14 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
           context,
         ).showSnackBar(const SnackBar(content: Text('视频已保存到所选目录')));
       }
-    } catch (_) {
+    } catch (failure, stack) {
+      AppLogs.shared.add(
+        LogLevel.error,
+        '导出',
+        '另存视频失败',
+        error: failure,
+        stack: stack,
+      );
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -715,6 +833,11 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
                           style: TextStyle(fontWeight: FontWeight.w700),
                         ),
                         const Spacer(),
+                        IconButton(
+                          onPressed: _showSettings,
+                          tooltip: '设置',
+                          icon: const Icon(Icons.settings_outlined, size: 20),
+                        ),
                         TextButton(
                           onPressed: _showAbout,
                           child: Text(_versionLabel),
@@ -974,6 +1097,15 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
             ),
           ),
         const Spacer(),
+        IconButton(
+          onPressed: _showSettings,
+          tooltip: '设置',
+          icon: const Icon(
+            Icons.settings_outlined,
+            color: Color(0xFFCACAD2),
+            size: 20,
+          ),
+        ),
         IconButton(
           onPressed: _showUpdates,
           tooltip: '检查更新',

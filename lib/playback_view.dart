@@ -14,6 +14,7 @@ import 'watch_history.dart';
 import 'data/discovery_client.dart';
 import 'related_controller.dart';
 import 'services/episode_preloader.dart';
+import 'services/app_logs.dart';
 
 class PlaybackScreen extends StatefulWidget {
   const PlaybackScreen({
@@ -210,7 +211,14 @@ class _PlaybackScreenState extends State<PlaybackScreen>
         ),
         start: Duration(milliseconds: point.positionMs),
       );
-    } catch (_) {
+    } catch (failure, stack) {
+      AppLogs.shared.add(
+        LogLevel.error,
+        '本地播放',
+        '本地视频打开失败',
+        error: failure,
+        stack: stack,
+      );
       if (mounted) _localError = '无法播放本地视频，请确认文件仍存在且可以读取。';
     } finally {
       if (mounted) setState(() => _localLoading = false);
@@ -389,7 +397,14 @@ class _PlaybackScreenState extends State<PlaybackScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(ok ? '拼接任务已开始，可在任务管理查看进度。' : '无法准备拼接任务，请重试。')),
       );
-    } catch (_) {
+    } catch (failure, stack) {
+      AppLogs.shared.add(
+        LogLevel.error,
+        '拼接',
+        '准备拼接任务失败',
+        error: failure,
+        stack: stack,
+      );
       if (mounted) {
         ScaffoldMessenger.of(
           context,

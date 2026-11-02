@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'data/discovery_client.dart';
 import 'domain/discovery.dart';
+import 'services/app_logs.dart';
 
 enum DiscoveryMode { ranking, search, comic, random, related }
 
@@ -65,6 +66,7 @@ class DiscoveryController extends ChangeNotifier {
     };
     notifyListeners();
     try {
+      AppLogs.shared.add(LogLevel.info, '发现', '开始读取 ${requestedMode.name}');
       final page = more && result != null ? result!.page + 1 : 1;
       DiscoveryPage data;
       switch (requestedMode) {
@@ -119,6 +121,12 @@ class DiscoveryController extends ChangeNotifier {
         unawaited(_enrich(items.toList(), token));
       }
     } catch (e) {
+      AppLogs.shared.add(
+        LogLevel.error,
+        '发现',
+        '来源读取失败（${requestedMode.name}）',
+        error: e,
+      );
       if (!_disposed && token == _request) {
         error = e is FormatException
             ? e.message

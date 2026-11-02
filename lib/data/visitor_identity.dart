@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:pointycastle/export.dart';
 import '../services/app_storage.dart';
+import '../services/app_logs.dart';
 
 class VisitorInitializationException implements Exception {
   const VisitorInitializationException({this.reason = 'unavailable'});
@@ -40,7 +41,7 @@ abstract class VisitorIdentityProvider {
 /// Each installation registers its own visitor. No captured identity or account.
 class VisitorIdentityStore implements VisitorIdentityProvider {
   VisitorIdentityStore({required this.file, http.Client? client})
-    : _http = client ?? http.Client();
+    : _http = client ?? LoggedHttpClient();
   final Future<File> Function() file;
   final http.Client _http;
   RegisteredVisitor? _current;
@@ -94,6 +95,7 @@ class VisitorIdentityStore implements VisitorIdentityProvider {
       await temporary.rename(store.path);
       return _current = visitor;
     } on VisitorInitializationException catch (failure) {
+      AppLogs.shared.add(LogLevel.error, '访客初始化', failure.reason);
       debugPrint('Visitor bootstrap: ${failure.reason}');
       rethrow;
     } catch (_) {

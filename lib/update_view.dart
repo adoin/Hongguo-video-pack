@@ -1,6 +1,18 @@
 import 'package:flutter/material.dart';
 import 'services/app_updater.dart';
 
+ButtonStyle get updateActionButtonStyle => FilledButton.styleFrom(
+  minimumSize: const Size(0, 40),
+  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+  textStyle: const TextStyle(
+    fontSize: 14,
+    height: 1.2,
+    fontWeight: FontWeight.w600,
+  ),
+  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  tapTargetSize: MaterialTapTargetSize.padded,
+);
+
 class UpdateScreen extends StatefulWidget {
   const UpdateScreen({
     super.key,
@@ -120,6 +132,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
               runSpacing: 12,
               children: [
                 OutlinedButton(
+                  style: updateActionButtonStyle,
                   onPressed:
                       updater.checking || updater.downloading || installing
                       ? null
@@ -130,6 +143,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
                     !updater.downloading &&
                     updater.readyFile == null)
                   FilledButton(
+                    style: updateActionButtonStyle,
                     onPressed:
                         updater.checking || updater.release!.installer == null
                         ? null
@@ -138,16 +152,19 @@ class _UpdateScreenState extends State<UpdateScreen> {
                   ),
                 if (updater.downloading)
                   TextButton(
+                    style: updateActionButtonStyle,
                     onPressed: updater.cancel,
                     child: const Text('取消下载'),
                   ),
                 if (updater.readyFile != null)
                   FilledButton(
+                    style: updateActionButtonStyle,
                     onPressed: installing ? null : _install,
                     child: Text(installing ? '正在打开安装向导…' : '安装更新'),
                   ),
                 if (updater.release != null)
                   TextButton(
+                    style: updateActionButtonStyle,
                     onPressed: () => widget.openRelease(updater.release!.page),
                     child: Text('${updater.release!.source} 发布页'),
                   ),

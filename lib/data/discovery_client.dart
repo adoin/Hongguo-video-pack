@@ -6,6 +6,7 @@ import '../domain/discovery.dart';
 import 'hongguo_client.dart' show object, text, integer, Json;
 import 'app_search_client.dart';
 import 'signed_app_search.dart';
+import '../services/app_logs.dart';
 
 /// Public catalogue pages only. Opening a result still loads the full episode
 /// list through HongguoClient, never the preview-only IDs from a catalogue.
@@ -14,7 +15,7 @@ class DiscoveryClient {
     http.Client? client,
     this.appSearch,
     this.searchTimeout = const Duration(seconds: 15),
-  }) : _http = client ?? http.Client();
+  }) : _http = client ?? LoggedHttpClient();
   final http.Client _http;
   AppSearchClient? appSearch;
   final Duration searchTimeout;

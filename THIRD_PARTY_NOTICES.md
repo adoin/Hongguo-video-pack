@@ -8,6 +8,8 @@ Thanks to the MiniReel authors and LINUX DO for the inspiration and community di
 
 ## Reused software and licenses
 
+- WebDAV credentials use `flutter_secure_storage` 10.0.0, BSD-3-Clause: https://github.com/juliansteenbakker/flutter_secure_storage . The Windows DPAPI Dart backend from `flutter_secure_storage_windows` 4.1.0 is included under `vendor/flutter_secure_storage_windows/` with its license; only its plugin manifest is changed to exclude the unused legacy C++/ATL migration bridge. Android retains the upstream Keystore-based encryption implementation. No WebDAV credentials are distributed.
+
 The protocol adapters include code adapted from:
 
 - `seanminjie-del/hongguoTV-livingroom`, commit `76eeaa9b964359fe6ed3f4a2b6f79ffb11f35761`: `server/vendor/hongguo.cjs` and Kotlin core `Signer.kt`, `AesV3.kt`, `Bytes.kt`, `VendorConstants.kt`. These implementations derive from drpys commit `22261adfa31435e3b3ef5a730b8a2a75bcaf1715` and are GPL-3.0-only. Source: https://github.com/seanminjie-del/hongguoTV-livingroom . The license is included in `licenses/GPL-3.0.txt`.

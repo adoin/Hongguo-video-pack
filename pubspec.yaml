@@ -1,7 +1,7 @@
 name: hongguo_studio
 description: A borderless desktop and Android short drama assembly workspace.
 publish_to: none
-version: 0.3.3+12
+version: 0.3.4+13
 environment:
   sdk: ^3.10.0
 dependencies:
@@ -10,6 +10,7 @@ dependencies:
   crypto: ^3.0.7
   pointycastle: ^4.0.0
   http: ^1.6.0
+  flutter_secure_storage: 10.0.0
   file_picker: 10.3.10
   path_provider: ^2.1.6
   path: ^1.9.1
@@ -21,6 +22,8 @@ dependencies:
   media_kit_video: 2.0.1
   media_kit_libs_video: 1.0.7
 dev_dependencies:
+  flutter_secure_storage_windows: 4.1.0
+  path_provider_platform_interface: 2.1.3
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
@@ -36,3 +39,6 @@ flutter:
 # Newer Android provider uses a JNI native asset that also links a JVM on Windows.
 dependency_overrides:
   path_provider_android: 2.2.22
+  # Keep the upstream DPAPI backend without the unused native migration bridge.
+  flutter_secure_storage_windows:
+    path: vendor/flutter_secure_storage_windows

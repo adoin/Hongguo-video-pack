@@ -181,7 +181,9 @@ class _WatchHistoryScreenState extends State<WatchHistoryScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(16),
             children: [
-              const Text('在线记录超过 50 条时优先清理已看过的，再清理最早观看的；有合成文件的记录另行保留。'),
+              Text(
+                '在线记录超过 ${widget.history.limit} 条时优先清理已看过的，再清理最早观看的；有合成文件的记录另行保留。',
+              ),
               if (widget.history.error != null)
                 Text(
                   widget.history.error!,
@@ -225,7 +227,9 @@ class _WatchHistoryScreenState extends State<WatchHistoryScreen> {
                             for (final file in entry.files)
                               ListTile(
                                 title: Text(file.title),
-                                subtitle: Text(file.label),
+                                subtitle: Text(
+                                  '${file.label}${file.path.isEmpty ? ' · 关联本地文件后继续' : ''}',
+                                ),
                                 leading: const Icon(Icons.play_circle_outline),
                                 onTap: () => widget.onResume(file.copy()),
                               ),

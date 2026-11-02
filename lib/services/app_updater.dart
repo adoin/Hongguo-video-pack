@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'app_logs.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -135,7 +136,12 @@ class AppUpdater extends ChangeNotifier {
         release!.version.compareTo(local) > 0;
   }
 
+  String _lastLoggedError = '';
   void _notify() {
+    if (error.isNotEmpty && error != _lastLoggedError) {
+      AppLogs.shared.add(LogLevel.warning, '更新', error);
+    }
+    _lastLoggedError = error;
     if (!_disposed) notifyListeners();
   }
 
