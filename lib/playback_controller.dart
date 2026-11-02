@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'data/hongguo_client.dart';
 import 'domain/drama.dart';
 import 'services/episode_preloader.dart';
+import 'data/visitor_identity.dart';
 
 abstract class PlaybackEngine {
   Stream<bool> get completed;
@@ -206,10 +207,12 @@ class PlaybackController extends ChangeNotifier {
       if (_disposed || generation != _generation) return;
       loading = false;
       notifyListeners();
-    } catch (_) {
+    } catch (failure) {
       if (!identical(_playingFile, cached)) await cached?.dispose();
       if (_disposed || generation != _generation) return;
-      error = '播放准备失败，请重试或切换清晰度。';
+      error = failure is VisitorInitializationException
+          ? failure.toString()
+          : '播放准备失败，请重试或切换清晰度。';
       loading = false;
       notifyListeners();
     }

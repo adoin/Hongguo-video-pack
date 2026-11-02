@@ -5,6 +5,13 @@ import 'package:http/testing.dart';
 import 'package:hongguo_studio/data/hongguo_client.dart';
 import 'package:hongguo_studio/domain/drama.dart';
 import 'package:hongguo_studio/data/request_signer.dart';
+import 'package:hongguo_studio/data/visitor_identity.dart';
+
+class TestVisitors implements VisitorIdentityProvider {
+  @override
+  Future<RegisteredVisitor> get({RegisteredVisitor? rejected}) async =>
+      RegisteredVisitor('1000000000000001', '2000000000000001');
+}
 
 class FakeSigner implements RequestSigner {
   @override
@@ -127,6 +134,7 @@ void main() {
     () async {
       final client = HongguoClient(
         signer: FakeSigner(),
+        identities: TestVisitors(),
         client: MockClient((request) async {
           if (request.url.host == 'hongguoduanju.com') {
             return http.Response(
@@ -153,7 +161,7 @@ void main() {
       expect(drama.source, '网页详情回退');
       await expectLater(
         client.fetchVariants(drama.episodes.first),
-        throwsStateError,
+        throwsA(isA<VisitorInitializationException>()),
       );
       client.close();
     },

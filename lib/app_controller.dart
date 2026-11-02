@@ -8,6 +8,7 @@ import 'data/hongguo_client.dart';
 import 'domain/drama.dart';
 import 'services/media_engine.dart';
 import 'data/request_signer.dart';
+import 'data/visitor_identity.dart';
 import 'watch_history.dart';
 
 class StudioController extends ChangeNotifier {
@@ -487,6 +488,7 @@ class StudioController extends ChangeNotifier {
 }
 
 String friendlyError(Object error) {
+  if (error is VisitorInitializationException) return error.toString();
   if (error is StateError) return error.message.toString();
   if (error is TimeoutException || error is SocketException) {
     return '网络连接超时，请检查网络后重试。已下载分集会保留。';

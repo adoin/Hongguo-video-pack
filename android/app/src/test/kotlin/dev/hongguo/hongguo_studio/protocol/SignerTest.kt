@@ -28,6 +28,13 @@ class SignerTest {
         assertTrue("Native signer did not return requested episode (response length ${text.length})", text.contains("7671977925326949400"))
         assertTrue("Native signer returned a business error",Regex("\"(?:Code|code)\"\\s*:\\s*0").containsMatchIn(text))
     }
+    @Test fun playbackPreservesRegisteredVisitor() {
+        val identity = VendorConstants.device + mapOf("device_id" to "1000000000000001", "iid" to "2000000000000001")
+        val signed = Signer().sign("https://api5-normal-sinfonlineb.fqnovel.com/novel/player/multi_video_model/v1/", identity, body, preserveIdentity = true)
+        assertTrue(URI(signed.url).rawQuery.contains("device_id=1000000000000001"))
+        assertTrue(URI(signed.url).rawQuery.contains("iid=2000000000000001"))
+        assertEquals(52, signed.headers.getValue("x-gorgon").length)
+    }
     @Test fun searchPreservesInstanceIdentityAndEncodesCursor() {
         val identity = mapOf("device_id" to "1000000000000001", "iid" to "1000000000000002")
         val request = Signer().signSearch(mapOf("query" to "重生", "tab_type" to "11", "count" to "0", "offset" to "6", "search_id" to "test-session", "passback" to "5"), identity)

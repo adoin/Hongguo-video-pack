@@ -18,6 +18,33 @@ http.Response pageResponse(String route, Map<String, dynamic> page) =>
 
 void main() {
   test(
+    'temporary search gateway failure retries a live request once',
+    () async {
+      var calls = 0;
+      final client = DiscoveryClient(
+        client: MockClient((request) async {
+          expect(request.headers['Cache-Control'], 'no-cache');
+          if (++calls == 1) return http.Response('', 503);
+          return http.Response(
+            jsonEncode({
+              'pageNum': 1,
+              'totalPages': 1,
+              'searchList': [
+                {'series_id': '1', 'series_title': '重生'},
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      );
+      addTearDown(client.close);
+      final page = await client.search('重生');
+      expect(page.items.single.id, '1');
+      expect(calls, 2);
+    },
+  );
+  test(
     'refresh failure clears old rows and the same query always requests fresh data',
     () async {
       var searches = 0;
@@ -28,7 +55,7 @@ void main() {
               return http.Response('', 503);
             }
             searches++;
-            if (searches == 2) return http.Response('', 503);
+            if (searches == 2) return http.Response('', 403);
             return http.Response(
               jsonEncode({
                 'pageNum': 1,

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../domain/drama.dart';
 import 'request_signer.dart';
 import 'media_crypto.dart';
+import 'visitor_identity.dart';
 
 typedef Json = Map<String, dynamic>;
 Json object(dynamic value) =>
@@ -70,11 +71,16 @@ List<MediaVariant> parsePlaybackInfo(Json info) {
 
 /// App protocol adapter. No third-party parsing service or embedded account.
 class HongguoClient {
-  HongguoClient({http.Client? client, RequestSigner? signer})
-    : _http = client ?? http.Client(),
-      signer = signer ?? NativeRequestSigner();
+  HongguoClient({
+    http.Client? client,
+    RequestSigner? signer,
+    VisitorIdentityProvider? identities,
+  }) : _http = client ?? http.Client(),
+       identities = identities ?? VisitorIdentityStore.shared,
+       signer = signer ?? NativeRequestSigner();
   final http.Client _http;
   final RequestSigner signer;
+  final VisitorIdentityProvider identities;
   final String deviceId = _deviceId();
   final String installId = _deviceId();
   static const appHost = 'api5-normal-sinfonlineb.fqnovel.com';
@@ -171,6 +177,24 @@ class HongguoClient {
     Episode episode, {
     String? seriesId,
   }) async {
+    final visitor = await identities.get();
+    try {
+      return await _fetchVariants(episode, visitor);
+    } on _RejectedVisitor {
+      // Rebuild once only. A rejected new identity must not cause a retry loop.
+      final replacement = await identities.get(rejected: visitor);
+      try {
+        return await _fetchVariants(episode, replacement);
+      } on _RejectedVisitor {
+        throw const VisitorInitializationException();
+      }
+    }
+  }
+
+  Future<List<MediaVariant>> _fetchVariants(
+    Episode episode,
+    RegisteredVisitor visitor,
+  ) async {
     final body = jsonEncode({
       'biz_param': {
         'detail_page_version': 0,
@@ -187,8 +211,7 @@ class HongguoClient {
       },
     });
     final signed = await signer.sign(body, {
-      'iid': installId,
-      'device_id': deviceId,
+      ...visitor.parameters,
       'ac': 'wifi',
       'channel': 'update_64',
       'aid': '8662',
@@ -218,6 +241,9 @@ class HongguoClient {
     final response = await _http
         .post(signed.url, headers: signed.headers, body: signed.body)
         .timeout(const Duration(seconds: 30));
+    if (response.statusCode == 200 && response.bodyBytes.isEmpty) {
+      throw const _RejectedVisitor();
+    }
     final result = decodeApiResponse(response);
     final row = object(object(result['data'])[episode.id]);
     dynamic model = row['video_model'];
@@ -251,6 +277,10 @@ class HongguoClient {
   }
 
   void close() => _http.close();
+}
+
+class _RejectedVisitor implements Exception {
+  const _RejectedVisitor();
 }
 
 Drama parseAppDrama(Json result, String expectedId) {

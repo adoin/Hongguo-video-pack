@@ -1,5 +1,13 @@
 # Third-party notices
 
+## Community and project inspiration
+
+The author originally used MiniReel, shared in the [LINUX DO community](https://linux.do/), and encountered search pagination and playback failures during that personal use. Those experiences motivated this project's own observation and adaptation of the Hongguo website and App interfaces. They are not a claim about MiniReel's current behavior. See the [MiniReel community topic](https://linux.do/t/topic/3028726).
+
+Thanks to the MiniReel authors and LINUX DO for the inspiration and community discussion. MiniReel is acknowledged here as product inspiration, separately from the reused open-source implementations listed below. No MiniReel client binary, private source, account or device identity is included.
+
+## Reused software and licenses
+
 The protocol adapters include code adapted from:
 
 - `seanminjie-del/hongguoTV-livingroom`, commit `76eeaa9b964359fe6ed3f4a2b6f79ffb11f35761`: `server/vendor/hongguo.cjs` and Kotlin core `Signer.kt`, `AesV3.kt`, `Bytes.kt`, `VendorConstants.kt`. These implementations derive from drpys commit `22261adfa31435e3b3ef5a730b8a2a75bcaf1715` and are GPL-3.0-only. Source: https://github.com/seanminjie-del/hongguoTV-livingroom . The license is included in `licenses/GPL-3.0.txt`.

@@ -1,6 +1,6 @@
 # App 核心 API
 
-核对日期：2026-10-19。App 包名 `com.phoenix.read`，当前抓包版本 `7.3.9.32 / 73932`，App 标识 `aid=8662`、`app_name=novelread`。历史取流使用的版本参数与签名环境不同，不能统一替换后声称仍可用。
+核对日期：2026-11-02。App 包名 `com.phoenix.read`，当前抓包版本 `7.3.9.32 / 73932`，App 标识 `aid=8662`、`app_name=novelread`。历史取流使用的版本参数与签名环境不同，不能统一替换后声称仍可用。
 
 ## 网关与鉴权边界
 
@@ -135,6 +135,19 @@
 
 ## 4. 动态媒体信息与实际媒体
 
+### 2026-11-02 播放故障复核
+
+- 用户 Android 0.3.2 显示“播放准备失败”，搜索正常；USB 连接已确认安装版本为 0.3.2（11）。
+- 自研 `test/live_protocol_test.dart` 连续两次联网复测：完整分集读取成功，随后 `multi_video_model/v1/` 返回 HTTP 200 空正文，失败发生在 `decodeApiResponse`，未进入动态媒体信息读取和播放器解码。
+- 有限诊断中，现有签名的 7.1.3.32 / 7.3.5.32 / 7.3.9.32 请求，以及已知 a / c 网关请求均为空。仅切版本或网关未恢复；这些实验没有进入正式适配。
+- 后续已通过雷电中官方 7.3.9.32 的 PCAPdroid HTTPS 明文观察到成功取流：`POST api5-normal-sinfonlinec.fqnovel.com/novel/player/multi_video_model/player/v1`，正文增加 `dr_scene: "player"`、`biz_param.disable_video_relate_book: false`；预加载为 `/novel/player/multi_video_model/preload/v1`，`dr_scene: "preload"`。响应业务码 0，`data[episodeId].video_model` 有效。
+- 当前安装 APK 的 `classes14.dex` 已内置 `/novel/player/multi_video_model/:dr_scene/v1/` 和 `/novel/player/multi_video_model/v1/` 字符串。因此无需更新 App 就能构造带播放场景的路径；尚未证明远程配置参与了本次路由选择，不能称为今日新增地址。
+- 受控诊断使用自研签名重新生成请求，不依赖重放原签名：本机已注册访客配置取得有效模型；去掉 `klink_egdi`、`cdid` 等新增字段，甚至仅保留注册 ID 与基础版本/设备参数，仍成功；保持其余条件、改用随机身份则 HTTP 200 空正文。原始捕获请求直接重放未成功，未将其当作可复用签名。
+- 旧 b 网关 `/novel/player/multi_video_model/v1/` 使用有效本机注册配置，配新正文和旧正文分别成功。故端点变更不是本次失败的必要条件，当前随机访客身份被拒绝是已复现的兼容问题；无法据此确定服务端何时开始收紧，首次注册流程仍未完成。
+- 以上捕获的注册配置仅用于用户授权的本机诊断，不进入产品、源码、测试夹具或交付；不以内置共享身份或第三方解析服务掩盖初始化缺失。
+- 后续独立首次注册与 Dart 联网验证已成功：全新随机安装标识取得服务端非零身份，取得第二集 1080P 媒体、预加载 8,069,633 字节并用该集密钥实际解码 2 秒音视频，随后删除临时缓存。Android 安装后的验证状态须单独记录，不能以此替代。
+- 此条覆盖“当前仍可取流”的时效性判断；上文历史成功只代表对应验证时间。
+
 `GET <video_model 返回的 fallback_api>`，完整路径由来源动态给出。
 
 读取 `video_info.data.video_list`、`key_seed`、`video_duration`；`video_list` 可能为映射或列表，包含 `definition`、`vwidth`、`vheight`、`codec_type`、`main_url`、`spade_a` 等字段。
@@ -150,10 +163,14 @@
 
 ## 6. 首次访客注册
 
-`POST https://log.snssdk.com/service/2/device_register/`
+2026-11-02 已实测入口：`POST https://log5-applog.fqnovel.com/service/2/device_register/?tt_data=a&okhttp_version=4.2.243.31-douyin&use_store_region_cookie=1`
 
-官方 APK 字符串确认此路径；本项目独立实验尚未取得有效 `device_id / install_id`。普通压缩 `tt-data=b`、TTEncrypt `tt-data=a` 的受控请求均返回 HTTP 200、设备/安装 ID 为 0，属于失败。
+历史入口 `log.snssdk.com` 的旧实验、仅 gzip 的 `tt_data=b` 均未取得有效身份，不是当前实现。独立雷电空白实例中已取得官方首次注册请求与非零响应，并成功解码其 TTEncrypt 正文。
 
-实验结构：正文含 `magic_tag=ss_app_log`、`header`、`_gen_time`；header 包括 App、系统、版本、语言、时区、首次初始化随机标识等。加密、签名、版本、App aid 与服务端注册条件仍需按真实首次请求核对。TTEncrypt 只是正文格式，不代表注册成功。
+正文为 TTEncrypt(gzip(JSON))；JSON 含 `magic_tag=ss_app_log`、`header`、`_gen_time`。header 包括 App、协议设备参数、语言、时区及全新随机 `cdid / openudid / clientudid / req_id`。观察到 SDK `3.7.0-rc.34-fanqie-xiaoshuo`，`custom` 包括 `account_region_src / host_bit / account_region / dragon_device_type`；简化体省略 custom 的实验未成功，不把未知字段随意裁掉。
 
-注册返回 ID 为 0 时禁止生成假身份替代，禁止内置抓包中单台设备的身份。该问题与是否账号登录是两件事，当前没有证据表明接账号登录能修复注册。
+请求使用 `Content-Type: application/octet-stream;tt-data=a`、`log-encode-type: gzip`、编码后正文的 `x-ss-stub`、`x-ss-req-ticket` 与 SDK/UA 头。独立请求不需要复制官方 `x-neptune`，也不携带账号 Cookie。响应核对 `device_id_str / install_id_str` 非零、长度与格式合法；仅 HTTP 200 不算初始化成功。
+
+实现为跨端 Dart `lib/data/visitor_identity.dart`，使用现有 SHA-512 / AES 库封装协议，不要求 Python、Java 或 Node 注册服务。每次安装的身份写入应用支持目录 `data/visitor-v1.json`，并发共享初始化，重启复用；失败不覆盖已有文件。注册最多尝试两次，403/429 不自动重试；取流 HTTP 200 空正文最多重建一次身份后重试一次，仍失败则报错。Android 播放签名桥接显式保留注册身份，禁止再随机覆盖 Dart 传入的 ID。旧 search-visitor.json 不作为发布版身份来源。
+
+注册返回 ID 为 0 时禁止生成假身份替代，禁止内置抓包中单台设备的身份。访客注册与账号登录是两件事，当前修复不要求用户登录账号。

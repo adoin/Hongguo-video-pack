@@ -73,7 +73,8 @@ class MainActivity : FlutterActivity() {
                         require(body.length <= 65536)
                         worker.execute {
                             try {
-                                val signed = signer.sign("https://api5-normal-sinfonlineb.fqnovel.com/novel/player/multi_video_model/v1/", device, body.toByteArray(Charsets.UTF_8))
+                                require(listOf("iid", "device_id").all { device[it]?.matches(Regex("^[1-9]\\d{15,19}$")) == true })
+                                val signed = signer.sign("https://api5-normal-sinfonlineb.fqnovel.com/novel/player/multi_video_model/v1/", device, body.toByteArray(Charsets.UTF_8), preserveIdentity = true)
                                 runOnUiThread { result.success(mapOf("url" to signed.url, "headers" to signed.headers, "body" to body)) }
                             } catch (_: Exception) { runOnUiThread { result.error("SIGN", "无法准备播放请求，请重试", null) } }
                         }

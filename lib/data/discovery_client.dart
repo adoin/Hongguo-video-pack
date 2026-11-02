@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../domain/discovery.dart';
@@ -9,12 +10,29 @@ import 'signed_app_search.dart';
 /// Public catalogue pages only. Opening a result still loads the full episode
 /// list through HongguoClient, never the preview-only IDs from a catalogue.
 class DiscoveryClient {
-  DiscoveryClient({http.Client? client, this.appSearch})
-    : _http = client ?? http.Client();
+  DiscoveryClient({
+    http.Client? client,
+    this.appSearch,
+    this.searchTimeout = const Duration(seconds: 15),
+  }) : _http = client ?? http.Client();
   final http.Client _http;
   AppSearchClient? appSearch;
+  final Duration searchTimeout;
+  Future<void>? _searchReady;
+  bool _appUnavailable = false;
+  final _searchBackends = <String, _SearchBackend>{};
+
+  Future<bool> prepareSearchIdentity(Future<File> file) {
+    final operation = file.then(loadSearchIdentity);
+    _searchReady = operation.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return operation;
+  }
 
   Future<bool> loadSearchIdentity(File file) async {
+    appSearch = null;
     if (!await file.exists()) return false;
     if (await file.length() > 4096) throw const FormatException('本机搜索初始化信息无效');
     final data = object(jsonDecode(await file.readAsString()));
@@ -28,7 +46,43 @@ class DiscoveryClient {
       client: _http,
     );
     appSearch = AppSearchClient(transport.call);
+    _appUnavailable = false;
     return true;
+  }
+
+  Future<http.Response> _searchResponse(Uri uri) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final abort = Completer<void>();
+      try {
+        final request =
+            http.AbortableRequest('GET', uri, abortTrigger: abort.future)
+              ..headers.addAll(const {
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0',
+                'Referer': 'https://hongguoduanju.com/',
+                'Cache-Control': 'no-cache',
+              });
+        final response = await _http
+            .send(request)
+            .then(http.Response.fromStream)
+            .timeout(searchTimeout);
+        if (attempt == 0 && {502, 503, 504}.contains(response.statusCode)) {
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+          continue;
+        }
+        return response;
+      } catch (error) {
+        final transient =
+            error is TimeoutException ||
+            error is SocketException ||
+            error is http.ClientException;
+        if (!transient || attempt == 1) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      } finally {
+        if (!abort.isCompleted) abort.complete();
+      }
+    }
+    throw StateError('搜索暂不可用，请重试。');
   }
 
   static const boards = {
@@ -165,36 +219,53 @@ class DiscoveryClient {
     }
     final key = '$keyword|${relatedTo ?? ''}|${expanded ? 'catalogue' : 'web'}';
     if (!expanded) {
-      if (appSearch != null && relatedTo == null) {
-        return appSearch!.search(keyword, page: page, refresh: refresh);
+      await _searchReady;
+      if (_searchBackends.length >= 16 && !_searchBackends.containsKey(key)) {
+        _searchBackends.remove(_searchBackends.keys.first);
+      }
+      if (page == 1 && refresh) _searchBackends.remove(key);
+      final backend = _searchBackends.putIfAbsent(
+        key,
+        () => _SearchBackend(
+          _appUnavailable || relatedTo != null ? null : appSearch,
+        ),
+      );
+      final app = backend.app;
+      if (app != null) {
+        try {
+          return await app.search(keyword, page: page, refresh: refresh);
+        } catch (_) {
+          if (!identical(_searchBackends[key], backend) || page != 1) rethrow;
+          // Preserve the on-disk identity. An unavailable legacy source must not
+          // disable the new public search or change backend during pagination.
+          _appUnavailable = true;
+          backend.app = null;
+        }
       }
       if (page == 1 && refresh) _webSessions.remove(key);
       if (_webSessions.length >= 16 && !_webSessions.containsKey(key)) {
         _webSessions.remove(_webSessions.keys.first);
       }
       final session = _webSessions.putIfAbsent(key, () => {});
-      final response = await _http
-          .get(
-            Uri.https('hongguoduanju.com', '/api/search/result', {
-              'aid': '8662',
-              'query': keyword,
-              if (page > 1) 'page': '$page',
-            }),
-            headers: const {
-              'Accept': 'application/json',
-              'User-Agent': 'Mozilla/5.0',
-              'Referer': 'https://hongguoduanju.com/',
-              'Cache-Control': 'no-cache',
-            },
-          )
-          .timeout(const Duration(seconds: 25));
+      final response = await _searchResponse(
+        Uri.https('hongguoduanju.com', '/api/search/result', {
+          'aid': '8662',
+          'query': keyword,
+          if (page > 1) 'page': '$page',
+        }),
+      );
       if (response.statusCode == 403) {
         throw StateError('搜索暂时需要来源验证，请稍后重试。');
       }
       if (response.statusCode != 200) {
         throw StateError('搜索暂不可用（HTTP ${response.statusCode}），请重试。');
       }
-      final data = object(jsonDecode(utf8.decode(response.bodyBytes)));
+      Json data;
+      try {
+        data = object(jsonDecode(utf8.decode(response.bodyBytes)));
+      } on FormatException {
+        throw const FormatException('搜索响应无效，请稍后重试。');
+      }
       if (data['searchList'] is! List ||
           integer(data['pageNum']) != page ||
           integer(data['totalPages']) < 0) {
@@ -456,6 +527,11 @@ bool needsCoverLookup(String address) {
   if (address.isEmpty) return true;
   final path = Uri.tryParse(address)?.path.toLowerCase() ?? '';
   return path.endsWith('.heic') || path.endsWith('.heif');
+}
+
+class _SearchBackend {
+  _SearchBackend(this.app);
+  AppSearchClient? app;
 }
 
 Json routerPage(String html, String prefix) {

@@ -877,7 +877,7 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
         ? '本地版本'
         : updater.currentVersion,
     applicationLegalese:
-        '本工具仅供学习交流使用，严禁任何商用行为，否则后果自负。\n\n访客来源 · 本地制作\n包含 GPL-3.0 协议适配与 FFmpeg 组件。源码与第三方声明随交付包提供。',
+        '请仅处理你有权使用的视频内容，未经授权不得下载、传播或商业利用视频内容。\n软件源码依 GPL-3.0 发布；该许可不授予视频内容的使用或传播权。\n\n访客来源 · 本地制作\n包含 GPL-3.0 协议适配与 FFmpeg 组件。源码与第三方声明随交付包提供。',
     children: [
       TextButton(
         onPressed: () {
