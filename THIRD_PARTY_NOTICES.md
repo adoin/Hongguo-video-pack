@@ -8,6 +8,8 @@ Thanks to the MiniReel authors and LINUX DO for the inspiration and community di
 
 ## Reused software and licenses
 
+- Playback Argus/Ladon adaptation: `kotlin-tv/core/.../PlayerSigner.kt` and published synthetic test vectors from `seanminjie-del/hongguoTV-livingroom`, commit `52901f74586af3438e253aa03f119e43603ce73e` (2026-11-12), GPL-3.0-only. Upstream credits `N3urda/hongguoTV` commit `7444bb01` and `ch6vip/fqapp` Rust signing implementations. This project adds the JavaScript port, Android bridge and GET/video-tab response adaptation. Source: https://github.com/seanminjie-del/hongguoTV-livingroom/commit/52901f74586af3438e253aa03f119e43603ce73e . No captured identity, cookie or reusable request signature is distributed; offline vectors use public synthetic inputs.
+
 - WebDAV credentials use `flutter_secure_storage` 10.0.0, BSD-3-Clause: https://github.com/juliansteenbakker/flutter_secure_storage . The Windows DPAPI Dart backend from `flutter_secure_storage_windows` 4.1.0 is included under `vendor/flutter_secure_storage_windows/` with its license; only its plugin manifest is changed to exclude the unused legacy C++/ATL migration bridge. Android retains the upstream Keystore-based encryption implementation. No WebDAV credentials are distributed.
 
 The protocol adapters include code adapted from:

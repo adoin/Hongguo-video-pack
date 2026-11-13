@@ -217,36 +217,51 @@ class HongguoClient {
       'channel': 'update_64',
       'aid': '8662',
       'app_name': 'novelread',
-      'version_code': '73532',
-      'version_name': '7.3.5.32',
+      'version_code': '73932',
+      'version_name': '7.3.9.32',
       'device_platform': 'android',
       'os': 'android',
       'ssmix': 'a',
-      'device_type': '25053RT47C',
-      'device_brand': 'Redmi',
+      'device_type': 'DT1901A',
+      'device_brand': 'smartisan',
       'language': 'zh',
-      'os_api': '36',
-      'os_version': '16',
-      'manifest_version_code': '73532',
-      'resolution': '1280*2772',
-      'dpi': '520',
-      'update_version_code': '73532',
+      'os_api': '28',
+      'os_version': '9',
+      'manifest_version_code': '73932',
+      'resolution': '720*1280',
+      'dpi': '320',
+      'update_version_code': '73932',
       'host_abi': 'arm64-v8a',
       'dragon_device_type': 'phone',
-      'pv_player': '71332',
+      'pv_player': '73932',
       'compliance_status': '0',
       'need_personal_recommend': '1',
       'player_so_load': '1',
       'is_android_pad_screen': '0',
     });
-    final response = await _http
-        .post(signed.url, headers: signed.headers, body: signed.body)
-        .timeout(const Duration(seconds: 30));
+    if (!{'GET', 'POST'}.contains(signed.method) ||
+        signed.url.scheme != 'https' ||
+        signed.url.host != appHost) {
+      throw StateError('播放签名返回了无效请求');
+    }
+    final response =
+        await (signed.method == 'GET'
+                ? _http.get(signed.url, headers: signed.headers)
+                : _http.post(
+                    signed.url,
+                    headers: signed.headers,
+                    body: signed.body,
+                  ))
+            .timeout(const Duration(seconds: 30));
     if (response.statusCode == 200 && response.bodyBytes.isEmpty) {
       throw const _RejectedVisitor();
     }
     final result = decodeApiResponse(response);
-    final row = object(object(result['data'])[episode.id]);
+    final data = object(result['data']);
+    final models = data['video_model_data'] is Map
+        ? object(data['video_model_data'])
+        : data;
+    final row = object(models[episode.id]);
     dynamic model = row['video_model'];
     if (model is String) model = jsonDecode(model);
     final map = object(model);

@@ -26,7 +26,74 @@ class FakeSigner implements RequestSigner {
       );
 }
 
+class VideoTabSigner implements RequestSigner {
+  @override
+  Future<SignedRequest> sign(String body, Map<String, String> device) async =>
+      SignedRequest(
+        Uri.https(
+          HongguoClient.appHost,
+          '/reading/bookapi/video_tab/multi_video_model/v1/',
+        ),
+        {'x-argus': 'test'},
+        '',
+        method: 'GET',
+      );
+}
+
 void main() {
+  test(
+    'GET video-tab models unwrap correctly and resolve playable variants',
+    () async {
+      var requests = 0;
+      final client = HongguoClient(
+        signer: VideoTabSigner(),
+        identities: TestVisitors(),
+        client: MockClient((request) async {
+          requests++;
+          expect(request.method, 'GET');
+          expect(request.bodyBytes, isEmpty);
+          final data = request.url.host == HongguoClient.appHost
+              ? {
+                  'code': 0,
+                  'data': {
+                    'video_model_data': {
+                      '9': {
+                        'video_model': {
+                          'fallback_api': {
+                            'fallback_api':
+                                'https://video.volcengineapi.com/info',
+                          },
+                        },
+                      },
+                    },
+                  },
+                }
+              : {
+                  'code': 0,
+                  'video_info': {
+                    'data': {
+                      'video_duration': 120,
+                      'video_list': [
+                        {
+                          'vwidth': 1080,
+                          'vheight': 1920,
+                          'codec_type': 'h264',
+                          'main_url': 'https://media.example/video.mp4',
+                        },
+                      ],
+                    },
+                  },
+                };
+          return http.Response(jsonEncode(data), 200);
+        }),
+      );
+      addTearDown(client.close);
+      final variants = await client.fetchVariants(const Episode('9', 1));
+      expect(variants.single.quality, 1080);
+      expect(variants.single.duration, 120);
+      expect(requests, 2);
+    },
+  );
   test('accepts player links and rejects lookalike hosts', () {
     expect(
       seriesIdFromInput('https://hongguoduanju.com/player/123/456'),

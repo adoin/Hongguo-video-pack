@@ -169,6 +169,7 @@ class LoggedHttpClient extends http.BaseClient {
     final timer = Stopwatch()..start();
     final name =
         request.url.path.startsWith('/novel/') ||
+            request.url.path.startsWith('/reading/bookapi/video_tab/') ||
             request.url.path.startsWith('/api/') ||
             request.url.path.startsWith('/service/2/')
         ? request.url.path

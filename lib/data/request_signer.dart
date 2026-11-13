@@ -5,14 +5,21 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 class SignedRequest {
-  const SignedRequest(this.url, this.headers, this.body);
+  const SignedRequest(
+    this.url,
+    this.headers,
+    this.body, {
+    this.method = 'POST',
+  });
   final Uri url;
   final Map<String, String> headers;
   final String body;
+  final String method;
   factory SignedRequest.fromJson(Map<String, dynamic> data) => SignedRequest(
     Uri.parse(data['url'] as String),
     Map<String, String>.from(data['headers'] as Map),
     data['body'] as String,
+    method: data['method'] as String? ?? 'POST',
   );
 }
 
@@ -35,7 +42,7 @@ class NativeRequestSigner implements RequestSigner, SearchRequestSigner {
     final dir = await Directory(
       p.join(support.path, 'protocol-v1'),
     ).create(recursive: true);
-    for (final name in ['worker.cjs', 'signer.cjs']) {
+    for (final name in ['worker.cjs', 'signer.cjs', 'player_signer.cjs']) {
       final data = await rootBundle.loadString('assets/protocol/$name');
       await File(p.join(dir.path, name)).writeAsString(data, flush: true);
     }

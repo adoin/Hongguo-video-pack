@@ -11,6 +11,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import dev.hongguo.hongguo_studio.protocol.Signer
+import dev.hongguo.hongguo_studio.protocol.PlayerSigner
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -74,8 +75,10 @@ class MainActivity : FlutterActivity() {
                         worker.execute {
                             try {
                                 require(listOf("iid", "device_id").all { device[it]?.matches(Regex("^[1-9]\\d{15,19}$")) == true })
-                                val signed = signer.sign("https://api5-normal-sinfonlineb.fqnovel.com/novel/player/multi_video_model/v1/", device, body.toByteArray(Charsets.UTF_8), preserveIdentity = true)
-                                runOnUiThread { result.success(mapOf("url" to signed.url, "headers" to signed.headers, "body" to body)) }
+                                val ids=org.json.JSONObject(body).getJSONObject("mixed_video_id_map").getJSONArray("1004")
+                                require(ids.length()==1)
+                                val signed = PlayerSigner.request(ids.getString(0),device)
+                                runOnUiThread { result.success(mapOf("url" to signed.url, "headers" to signed.headers, "body" to "", "method" to "GET")) }
                             } catch (_: Exception) { runOnUiThread { result.error("SIGN", "无法准备播放请求，请重试", null) } }
                         }
                     }

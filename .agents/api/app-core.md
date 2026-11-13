@@ -4,6 +4,14 @@
 
 ## 网关与鉴权边界
 
+### 2026-11-13 当前取流适配
+
+- 已复现 0.3.4：首次注册返回非零身份，但旧 `POST /novel/player/multi_video_model/v1/` 以及此前观测的 player/preload 路径配旧签名均 HTTP 200 空正文；重建身份后不恢复，不能再次归因为仅本机身份过期。
+- 本次独立请求已验证 `GET https://api5-normal-sinfonlineb.fqnovel.com/reading/bookapi/video_tab/multi_video_model/v1/`，查询包含 `video_id`、`video_id_type=0`、`device_level=1`、`need_all_video_definition=1`、`video_platform=1024` 等。使用当前安装自己注册的身份，不导入固定设备配置。
+- 播放专用完整 Argus/Ladon 签名绑定最终查询，取代旧播放请求的时间戳占位头；不修改现有 App 搜索签名。响应业务码 0，模型位于 `data.video_model_data[episodeId].video_model`，后续动态媒体信息链路仍可用。
+- 新适配已通过独立注册、两集取流、第二集 1080P 实际缓存 8,069,633 字节与 2 秒解密解码验证，缓存随后清理；不能把该有限验证泛化为全部剧集或全设备验收。
+- Windows：`player_signer.cjs` 随 worker 与其他协议资产一同打包；Android：同源 Kotlin `PlayerSigner.kt`。两端使用独立公开算法向量测试，测试数据不来自用户抓包。更新来源及 GPL 声明见 THIRD_PARTY_NOTICES.md。以下旧入口成功记录仅代表对应日期。
+
 | 用途 | 已观测/使用的网关 | 边界 |
 |---|---|---|
 | 实测搜索 | `api5-normal-sinfonlinec.fqnovel.com` | 已取得有效搜索及后页；程序新签名可用 |

@@ -3,6 +3,7 @@
 'use strict';
 const readline = require('node:readline');
 const signer = require('./signer.cjs');
+const player = require('./player_signer.cjs');
 readline.createInterface({ input: process.stdin, terminal: false }).once('line', line => {
   try {
     const input = JSON.parse(line);
@@ -17,8 +18,10 @@ readline.createInterface({ input: process.stdin, terminal: false }).once('line',
       signed = signer.signSearch(input.query, input.device);
     } else {
       if (input.operation !== undefined || typeof input.body !== 'string' || input.body.length > 65536) throw Error('Invalid request');
-      signed = signer.sign(input.body, input.device);
+      const ids = JSON.parse(input.body)?.mixed_video_id_map?.['1004'];
+      if (!Array.isArray(ids) || ids.length !== 1 || !/^\d{1,32}$/.test(ids[0])) throw Error('Invalid episode');
+      signed = player.sign(ids[0], input.device);
     }
-    process.stdout.write(JSON.stringify({url:signed.url, headers:signed.headers, body:signed.body.toString('utf8')}));
+    process.stdout.write(JSON.stringify({url:signed.url, headers:signed.headers, body:signed.body.toString('utf8'), method:signed.method ?? 'GET'}));
   } catch (_) { process.stderr.write('Protocol signing failed'); process.exitCode = 1; }
 });
