@@ -7,6 +7,18 @@ import org.junit.Test
 
 /** Independent fqapp vectors published by N3urda/hongguoTV 7444bb01 and hongguo-drama v7.1. */
 class PlayerSignerTest {
+    @Test fun originalPostAndFallbackUseTheSameSignerAndBindTheirActualBodies() {
+        val device=VendorConstants.device+mapOf("device_id" to "1000000000000001","iid" to "2000000000000001")
+        val body="""{"mixed_video_id_map":{"1004":["123"]}}""".toByteArray()
+        val primary=PlayerSigner.request("123",device,body)
+        val fallback=PlayerSigner.request("123",device)
+        assertEquals("/novel/player/multi_video_model/v1/",java.net.URI(primary.url).path)
+        assertEquals(digest("MD5",body).hex(),primary.headers["x-ss-stub"])
+        assertArrayEquals(body,primary.body)
+        assertNull(primary.headers["x-medusa"])
+        assertEquals("/reading/bookapi/video_tab/multi_video_model/v1/",java.net.URI(fallback.url).path)
+        assertNull(fallback.body)
+    }
     @Test fun argusMatchesExternal551Ciphertext() {
         val query = "aid=1967&device_id=X&iid=333"
         assertEquals("8oEOCRTb0LQf+M+MsliYu4M9kBzAlzXvFgL/Ub198hyoBGxYfNXLAENmH+K/10JQ+Rbhm2zRxNtNv5wVd885xcb6C6F10zp/9jVeGHGz8plz8W3UXHHNrFKjJptjQElGDbyaVLSKt56+HfwO7ENYMfjVv/5PNi1upVciiHqyOPDDAtwi/fZkwBoU1kC7RolMOuedn4lCg/s0CjnNvxFT0QpF/K0yoW3Zpu30tkadIET7WbZ3+7KT3c1yAA6RKWI4mmw=",

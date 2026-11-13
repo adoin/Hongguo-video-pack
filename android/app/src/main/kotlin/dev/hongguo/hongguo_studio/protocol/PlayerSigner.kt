@@ -206,22 +206,26 @@ private fun decodeForm(value: String): String = runCatching {
 internal object PlayerSigner {
     const val LICENSE_ID = 1_611_921_764L
     private val random = SecureRandom()
-    fun request(episode: String, device: Map<String,String>): Signer.Request {
+    fun request(episode: String, device: Map<String,String>, body: ByteArray? = null): Signer.Request {
         require(episode.matches(Regex("^[0-9]{1,32}$")))
         require(listOf("device_id","iid").all { device[it]?.matches(Regex("^[1-9]\\d{15,19}$")) == true })
         val now=System.currentTimeMillis(); val ts=now/1000
         val values=device+linkedMapOf("aid" to "8662","app_name" to "novelread",
             "version_code" to "73932","version_name" to "7.3.9.32","manifest_version_code" to "73932",
-            "update_version_code" to "73932","pv_player" to "73932","video_id" to episode,
+            "update_version_code" to "73932","pv_player" to "73932") +
+            (if(body==null) linkedMapOf("video_id" to episode,
             "video_id_type" to "0","device_level" to "1","need_all_video_definition" to "1",
             "need_mp4_align" to "0","use_os_player" to "0","video_platform" to "1024",
-            "source" to "0","from_video_id" to "","ts" to ts.toString(),"_rticket" to now.toString())
+            "source" to "0","from_video_id" to "") else emptyMap()) +
+            mapOf("ts" to ts.toString(),"_rticket" to now.toString())
         val query=Signer.encode(values)
-        val headers=headers(query,null,ts)+mapOf("User-Agent" to "com.phoenix.read/73932 (Linux; U; Android 9; zh_CN; DT1901A)",
+        val headers=headers(query,body,ts)+mapOf("User-Agent" to "com.phoenix.read/73932 (Linux; U; Android 9; zh_CN; DT1901A)",
             "Accept" to "application/json; charset=utf-8,application/x-protobuf","sdk-version" to "2",
             "x-xs-from-web" to "0","x-ss-dp" to "8662","passport-sdk-version" to "50561",
             "x-tt-dt" to "","x-tt-store-region" to "cn","x-tt-store-region-src" to "did","x-tt-request-tag" to "t=0;n=0")
-        return Signer.Request("https://api5-normal-sinfonlineb.fqnovel.com/reading/bookapi/video_tab/multi_video_model/v1/?$query",headers,null)
+        val path=if(body==null) "/reading/bookapi/video_tab/multi_video_model/v1/" else "/novel/player/multi_video_model/v1/"
+        val finalHeaders=if(body==null) headers else headers+mapOf("Content-Type" to "application/json; charset=UTF-8")
+        return Signer.Request("https://api5-normal-sinfonlineb.fqnovel.com$path?$query",finalHeaders,body)
     }
     fun headers(query: String, body: ByteArray?, ts: Long = System.currentTimeMillis() / 1000): Map<String, String> {
         val aid = queryParam(query, "aid")?.toLongOrNull() ?: 1967L

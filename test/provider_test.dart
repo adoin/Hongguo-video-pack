@@ -8,9 +8,12 @@ import 'package:hongguo_studio/data/request_signer.dart';
 import 'package:hongguo_studio/data/visitor_identity.dart';
 
 class TestVisitors implements VisitorIdentityProvider {
+  int calls = 0;
   @override
-  Future<RegisteredVisitor> get({RegisteredVisitor? rejected}) async =>
-      RegisteredVisitor('1000000000000001', '2000000000000001');
+  Future<RegisteredVisitor> get({RegisteredVisitor? rejected}) async {
+    calls++;
+    return RegisteredVisitor('1000000000000001', '2000000000000001');
+  }
 }
 
 class FakeSigner implements RequestSigner {
@@ -40,7 +43,94 @@ class VideoTabSigner implements RequestSigner {
       );
 }
 
+class CompatibleSigner extends FakeSigner implements PlaybackFallbackSigner {
+  int fallbacks = 0;
+  @override
+  Future<SignedRequest> signFallback(String body, Map<String, String> device) {
+    fallbacks++;
+    return VideoTabSigner().sign(body, device);
+  }
+}
+
 void main() {
+  test(
+    'primary failure uses one compatible request without replacing the identity',
+    () async {
+      final identities = TestVisitors();
+      final signer = CompatibleSigner();
+      var calls = 0;
+      final client = HongguoClient(
+        identities: identities,
+        signer: signer,
+        client: MockClient((request) async {
+          calls++;
+          if (request.method == 'POST') return http.Response('', 200);
+          final data = request.url.host == HongguoClient.appHost
+              ? {
+                  'code': 0,
+                  'data': {
+                    'video_model_data': {
+                      '9': {
+                        'video_model': {
+                          'fallback_api':
+                              'https://video.volcengineapi.com/info',
+                        },
+                      },
+                    },
+                  },
+                }
+              : {
+                  'code': 0,
+                  'video_info': {
+                    'data': {
+                      'video_list': [
+                        {
+                          'vwidth': 1080,
+                          'vheight': 1920,
+                          'codec_type': 'h264',
+                          'main_url': 'https://media.example/video.mp4',
+                        },
+                      ],
+                    },
+                  },
+                };
+          return http.Response(jsonEncode(data), 200);
+        }),
+      );
+      addTearDown(client.close);
+      expect(
+        (await client.fetchVariants(const Episode('9', 1))).single.quality,
+        1080,
+      );
+      expect(identities.calls, 1);
+      expect(signer.fallbacks, 1);
+      expect(calls, 3);
+    },
+  );
+  test(
+    'empty primary and fallback requests have a bounded identity retry',
+    () async {
+      final identities = TestVisitors();
+      final signer = CompatibleSigner();
+      var calls = 0;
+      final client = HongguoClient(
+        identities: identities,
+        signer: signer,
+        client: MockClient((_) async {
+          calls++;
+          return http.Response('', 200);
+        }),
+      );
+      addTearDown(client.close);
+      await expectLater(
+        client.fetchVariants(const Episode('9', 1)),
+        throwsA(isA<VisitorInitializationException>()),
+      );
+      expect(identities.calls, 2);
+      expect(signer.fallbacks, 2);
+      expect(calls, 4);
+    },
+  );
   test(
     'GET video-tab models unwrap correctly and resolve playable variants',
     () async {

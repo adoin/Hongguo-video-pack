@@ -211,7 +211,7 @@ class HongguoClient {
         '1004': [episode.id],
       },
     });
-    final signed = await signer.sign(body, {
+    final device = <String, String>{
       ...visitor.parameters,
       'ac': 'wifi',
       'channel': 'update_64',
@@ -238,25 +238,43 @@ class HongguoClient {
       'need_personal_recommend': '1',
       'player_so_load': '1',
       'is_android_pad_screen': '0',
-    });
+    };
+    var response = await _playbackResponse(await signer.sign(body, device));
+    if (signer is PlaybackFallbackSigner &&
+        (response.statusCode == 200 && response.bodyBytes.isEmpty ||
+            {404, 405, 410}.contains(response.statusCode))) {
+      AppLogs.shared.add(LogLevel.warning, '取流', '主入口未返回可用数据，尝试兼容入口。');
+      response = await _playbackResponse(
+        await (signer as PlaybackFallbackSigner).signFallback(body, device),
+      );
+    }
+    if (response.statusCode == 200 && response.bodyBytes.isEmpty) {
+      throw const _RejectedVisitor();
+    }
+    final result = decodeApiResponse(response);
+    return _resolvePlayback(result, episode);
+  }
+
+  Future<http.Response> _playbackResponse(SignedRequest signed) async {
     if (!{'GET', 'POST'}.contains(signed.method) ||
         signed.url.scheme != 'https' ||
         signed.url.host != appHost) {
       throw StateError('播放签名返回了无效请求');
     }
-    final response =
-        await (signed.method == 'GET'
-                ? _http.get(signed.url, headers: signed.headers)
-                : _http.post(
-                    signed.url,
-                    headers: signed.headers,
-                    body: signed.body,
-                  ))
-            .timeout(const Duration(seconds: 30));
-    if (response.statusCode == 200 && response.bodyBytes.isEmpty) {
-      throw const _RejectedVisitor();
-    }
-    final result = decodeApiResponse(response);
+    return await (signed.method == 'GET'
+            ? _http.get(signed.url, headers: signed.headers)
+            : _http.post(
+                signed.url,
+                headers: signed.headers,
+                body: signed.body,
+              ))
+        .timeout(const Duration(seconds: 30));
+  }
+
+  Future<List<MediaVariant>> _resolvePlayback(
+    Json result,
+    Episode episode,
+  ) async {
     final data = object(result['data']);
     final models = data['video_model_data'] is Map
         ? object(data['video_model_data'])

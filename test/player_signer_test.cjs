@@ -1,6 +1,30 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const player = require("../assets/protocol/player_signer.cjs");
+const crypto = require("node:crypto");
+
+test("original POST binds the actual body and never adds a Medusa header", () => {
+  const device = { device_id: "1000000000000001", iid: "2000000000000001" };
+  const options = {
+    now: 1700000000000,
+    random: Buffer.from("01020304", "hex"),
+  };
+  const body = '{"mixed_video_id_map":{"1004":["123"]}}';
+  const signed = player.sign("123", device, { ...options, body });
+  assert.equal(signed.method, "POST");
+  assert.equal(signed.body.toString(), body);
+  assert.equal(
+    new URL(signed.url).pathname,
+    "/novel/player/multi_video_model/v1/",
+  );
+  assert.equal(
+    signed.headers["x-ss-stub"],
+    crypto.createHash("md5").update(body).digest("hex"),
+  );
+  assert.equal(signed.headers["x-medusa"], undefined);
+  const changed = player.sign("123", device, { ...options, body: body + " " });
+  assert.notEqual(signed.headers["x-argus"], changed.headers["x-argus"]);
+});
 
 test("Argus matches the independently published 551 vector", () => {
   assert.equal(

@@ -68,7 +68,7 @@ class MainActivity : FlutterActivity() {
                         audio.setStreamVolume(AudioManager.STREAM_MUSIC, kotlin.math.round(value * maximum).toInt(), 0)
                         result.success(null)
                     }
-                    "sign" -> {
+                    "sign", "signPlaybackFallback" -> {
                         val body = requireNotNull(call.argument<String>("body"))
                         val device = requireNotNull(call.argument<Map<String, String>>("device"))
                         require(body.length <= 65536)
@@ -77,8 +77,8 @@ class MainActivity : FlutterActivity() {
                                 require(listOf("iid", "device_id").all { device[it]?.matches(Regex("^[1-9]\\d{15,19}$")) == true })
                                 val ids=org.json.JSONObject(body).getJSONObject("mixed_video_id_map").getJSONArray("1004")
                                 require(ids.length()==1)
-                                val signed = PlayerSigner.request(ids.getString(0),device)
-                                runOnUiThread { result.success(mapOf("url" to signed.url, "headers" to signed.headers, "body" to "", "method" to "GET")) }
+                                val signed = PlayerSigner.request(ids.getString(0),device,if(call.method=="signPlaybackFallback") null else body.toByteArray(Charsets.UTF_8))
+                                runOnUiThread { result.success(mapOf("url" to signed.url, "headers" to signed.headers, "body" to (signed.body?.toString(Charsets.UTF_8) ?: ""), "method" to if(signed.body==null) "GET" else "POST")) }
                             } catch (_: Exception) { runOnUiThread { result.error("SIGN", "无法准备播放请求，请重试", null) } }
                         }
                     }

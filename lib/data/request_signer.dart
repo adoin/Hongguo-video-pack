@@ -27,6 +27,10 @@ abstract class RequestSigner {
   Future<SignedRequest> sign(String body, Map<String, String> device);
 }
 
+abstract class PlaybackFallbackSigner implements RequestSigner {
+  Future<SignedRequest> signFallback(String body, Map<String, String> device);
+}
+
 abstract class SearchRequestSigner {
   Future<SignedRequest> signSearch(
     Map<String, String> query,
@@ -34,7 +38,8 @@ abstract class SearchRequestSigner {
   );
 }
 
-class NativeRequestSigner implements RequestSigner, SearchRequestSigner {
+class NativeRequestSigner
+    implements PlaybackFallbackSigner, SearchRequestSigner {
   static const channel = MethodChannel('dev.hongguo.studio/platform');
   Future<String>? _worker;
   Future<String> _prepare() async {
@@ -53,6 +58,14 @@ class NativeRequestSigner implements RequestSigner, SearchRequestSigner {
   Future<SignedRequest> sign(String body, Map<String, String> device) async {
     return _run({'body': body, 'device': device}, 'sign');
   }
+
+  @override
+  Future<SignedRequest> signFallback(String body, Map<String, String> device) =>
+      _run({
+        'operation': 'playbackFallback',
+        'body': body,
+        'device': device,
+      }, 'signPlaybackFallback');
 
   @override
   Future<SignedRequest> signSearch(

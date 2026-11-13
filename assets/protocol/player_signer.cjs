@@ -37,7 +37,7 @@ function pb(fields) {
     ),
   );
 }
-function argus(query, ts, device, random) {
+function argus(query, ts, device, random, stubHex = "") {
   const k = Buffer.from(
     "fc78e0a9657a0c748ce51559903ccf03510e51d3cff232d71343e88a321c5304",
     "hex",
@@ -65,7 +65,13 @@ function argus(query, ts, device, random) {
       [10, Buffer.alloc(8)],
       [11, 0],
       [12, BigInt(ts) * 2n],
-      [13, hash("sm3", Buffer.alloc(16)).subarray(0, 6)],
+      [
+        13,
+        hash(
+          "sm3",
+          stubHex ? Buffer.from(stubHex, "hex") : Buffer.alloc(16),
+        ).subarray(0, 6),
+      ],
       [14, hash("sm3", Buffer.from(query)).subarray(0, 6)],
       [
         15,
@@ -156,7 +162,7 @@ function ladon(ts, random, aid = "8662") {
 function sign(
   episode,
   device,
-  { now = Date.now(), random = crypto.randomBytes(4) } = {},
+  { now = Date.now(), random = crypto.randomBytes(4), body } = {},
 ) {
   if (
     !/^\d{1,32}$/.test(episode) ||
@@ -164,6 +170,9 @@ function sign(
   )
     throw Error("Invalid playback identity");
   const ts = Math.floor(now / 1000);
+  const post = typeof body === "string";
+  const payload = post ? Buffer.from(body, "utf8") : Buffer.alloc(0);
+  const stub = post ? hash("md5", payload).toString("hex") : "";
   const values = {
     ...device,
     aid: "8662",
@@ -173,15 +182,19 @@ function sign(
     manifest_version_code: "73932",
     update_version_code: "73932",
     pv_player: "73932",
-    video_id: episode,
-    video_id_type: "0",
-    device_level: "1",
-    need_all_video_definition: "1",
-    need_mp4_align: "0",
-    use_os_player: "0",
-    video_platform: "1024",
-    source: "0",
-    from_video_id: "",
+    ...(post
+      ? {}
+      : {
+          video_id: episode,
+          video_id_type: "0",
+          device_level: "1",
+          need_all_video_definition: "1",
+          need_mp4_align: "0",
+          use_os_player: "0",
+          video_platform: "1024",
+          source: "0",
+          from_video_id: "",
+        }),
     ts: String(ts),
     _rticket: String(now),
   };
@@ -190,10 +203,13 @@ function sign(
     .join("&");
   return {
     url:
-      "https://api5-normal-sinfonlineb.fqnovel.com/reading/bookapi/video_tab/multi_video_model/v1/?" +
+      "https://api5-normal-sinfonlineb.fqnovel.com" +
+      (post
+        ? "/novel/player/multi_video_model/v1/?"
+        : "/reading/bookapi/video_tab/multi_video_model/v1/?") +
       query,
-    method: "GET",
-    body: Buffer.alloc(0),
+    method: post ? "POST" : "GET",
+    body: payload,
     headers: {
       "User-Agent":
         "com.phoenix.read/73932 (Linux; U; Android 9; zh_CN; DT1901A)",
@@ -209,7 +225,13 @@ function sign(
       "x-ss-req-ticket": String(ts * 1000),
       "x-khronos": String(ts),
       "x-ladon": ladon(ts, random),
-      "x-argus": argus(query, ts, values, random.readUInt32LE()),
+      "x-argus": argus(query, ts, values, random.readUInt32LE(), stub),
+      ...(post
+        ? {
+            "Content-Type": "application/json; charset=UTF-8",
+            "x-ss-stub": stub,
+          }
+        : {}),
     },
   };
 }
