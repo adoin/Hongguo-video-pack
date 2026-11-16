@@ -64,6 +64,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(c.preloadNext, isFalse);
         expect(tasks.preloadNext, isFalse);
+        await tester.ensureVisible(find.text('相关推荐'));
+        await tester.tap(find.text('相关推荐'));
+        await tester.pumpAndSettle();
         await tester.ensureVisible(find.text('相关剧集'));
         await tester.pumpAndSettle();
         expect(find.text('示例剧集第二季'), findsOneWidget);

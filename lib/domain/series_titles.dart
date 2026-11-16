@@ -1,6 +1,6 @@
 import 'discovery.dart';
 
-final _season = RegExp(r'第([零〇一二三四五六七八九十百千两\d]+)(季|部|卷|篇|剧)');
+final _season = RegExp(r'第\s*([零〇一二三四五六七八九十百千两\d]+)\s*(季|部|卷|篇|剧)');
 String _normalize(String value) => value.toLowerCase().replaceAll(
   RegExp(r'[\s：:，,。.!！?？·\-—_《》【】\[\]（）()]'),
   '',
@@ -69,8 +69,10 @@ String chineseSeason(int number) {
 
 class SeriesTitle {
   SeriesTitle(String title) {
+    this.extra = title.contains('番外');
     final match = _season.firstMatch(title);
     final extra = title.indexOf('番外');
+    tail = match == null ? '' : title.substring(match.end).trim();
     base =
         (match != null
                 ? title.substring(0, match.start)
@@ -81,8 +83,9 @@ class SeriesTitle {
     number = match == null ? 1 : seasonNumber(match[1]!) ?? 1;
     unit = match?[2] ?? '季';
   }
-  late final String base, unit;
+  late final String base, unit, tail;
   late final int number;
+  late final bool extra;
   List<String> get queries => base.isEmpty
       ? []
       : {
@@ -96,6 +99,15 @@ class SeriesTitle {
       matches(title) &&
       (SeriesTitle(title).number == number + 1 ||
           _normalize(title).startsWith('${_normalize(base)}番外'));
+  bool isNextSeason(String title) =>
+      !extra &&
+      base.isNotEmpty &&
+      matches(title) &&
+      _season.hasMatch(title) &&
+      !title.contains('番外') &&
+      SeriesTitle(title).unit == unit &&
+      _normalize(SeriesTitle(title).tail) == _normalize(tail) &&
+      SeriesTitle(title).number == number + 1;
 }
 
 List<DramaSummary> mergeRelated(

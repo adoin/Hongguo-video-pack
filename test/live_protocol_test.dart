@@ -99,6 +99,9 @@ void main() {
                 'independentRegistration': true,
                 'nextEpisodeBytes': bytes,
                 'quality': media.quality,
+                'width': media.width,
+                'height': media.height,
+                'rotation': media.rotation,
                 'decodedSeconds': decoded,
               }),
             );

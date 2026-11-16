@@ -31,14 +31,22 @@ class EpisodePreloader {
   http.Client? _active;
   int _generation = 0;
   static const maxBytes = 64 * 1024 * 1024;
+  String? lastFailure;
+  bool mediaLinkRejected = false;
+  bool retryable = true;
+  Completer<void>? _abort;
   void cancel() {
     _generation++;
+    if (_abort?.isCompleted == false) _abort!.complete();
     _active?.close();
     _active = null;
   }
 
   Future<PreloadedEpisode?> load(MediaVariant media) async {
     cancel();
+    lastFailure = null;
+    mediaLinkRejected = false;
+    retryable = true;
     final generation = _generation;
     final uri = Uri.tryParse(media.url);
     if (uri == null || !{'http', 'https'}.contains(uri.scheme)) return null;
@@ -46,6 +54,8 @@ class EpisodePreloader {
     IOSink? sink;
     Timer? deadline;
     final client = _clientFactory();
+    final abort = Completer<void>();
+    _abort = abort;
     _active = client;
     try {
       final root = await directory();
@@ -67,15 +77,48 @@ class EpisodePreloader {
       if (generation != _generation) return null;
       temporary = await root.createTemp('next-');
       final file = File(p.join(temporary.path, 'episode.mp4'));
-      deadline = Timer(const Duration(seconds: 60), client.close);
+      deadline = Timer(const Duration(seconds: 60), () {
+        if (generation == _generation) lastFailure = '缓存下载超时';
+        if (!abort.isCompleted) abort.complete();
+        client.close();
+      });
       final response = await client
           .send(
-            http.Request('GET', uri)
-              ..headers['Referer'] = 'https://novel.snssdk.com/',
+            http.AbortableRequest('GET', uri, abortTrigger: abort.future)
+              ..headers.addAll({
+                'Referer': 'https://novel.snssdk.com/',
+                'Accept-Encoding': 'identity',
+              }),
           )
           .timeout(const Duration(seconds: 20));
-      if (response.statusCode != 200 ||
+      if (generation != _generation) return null;
+      final type = response.headers['content-type'] ?? '';
+      if ({401, 403, 404, 410}.contains(response.statusCode) ||
+          type.startsWith('text/html') ||
+          type.startsWith('application/json')) {
+        mediaLinkRejected = true;
+        lastFailure = '媒体地址失效或返回无效内容';
+        return null;
+      }
+      int? expected =
+          response.headers['content-encoding'] == null ||
+              response.headers['content-encoding'] == 'identity'
+          ? response.contentLength
+          : null;
+      if (response.statusCode == 206) {
+        final range = RegExp(
+          r'^bytes 0-(\d+)/(\d+)$',
+        ).firstMatch(response.headers['content-range'] ?? '');
+        if (range == null || int.parse(range[1]!) + 1 != int.parse(range[2]!)) {
+          lastFailure = '服务器只返回部分数据';
+          return null;
+        }
+        expected = int.parse(range[2]!);
+      }
+      if (!{200, 206}.contains(response.statusCode) ||
           (response.contentLength ?? 0) > maxBytes) {
+        lastFailure = '缓存响应不可用或超过大小限制';
+        if ((response.contentLength ?? 0) > maxBytes) retryable = false;
         return null;
       }
       sink = file.openWrite();
@@ -89,7 +132,11 @@ class EpisodePreloader {
           return null;
         }
         bytes += chunk.length;
-        if (bytes > maxBytes) return null;
+        if (bytes > maxBytes) {
+          lastFailure = '媒体超过缓存大小限制';
+          retryable = false;
+          return null;
+        }
         sink.add(chunk);
       }
       await sink.flush();
@@ -97,7 +144,8 @@ class EpisodePreloader {
       sink = null;
       if (generation != _generation ||
           bytes == 0 ||
-          (response.contentLength != null && bytes != response.contentLength)) {
+          (expected != null && bytes != expected)) {
+        if (generation == _generation) lastFailure = '缓存下载不完整';
         return null;
       }
       final result = PreloadedEpisode(
@@ -108,6 +156,10 @@ class EpisodePreloader {
           key: media.key,
           duration: media.duration,
           source: media.source,
+          width: media.width,
+          height: media.height,
+          rotation: media.rotation,
+          sizeBytes: bytes,
         ),
         temporary,
       );
@@ -115,9 +167,11 @@ class EpisodePreloader {
           null; // Ownership transfers to playback until the demuxer stops.
       return result;
     } catch (_) {
+      if (generation == _generation) lastFailure ??= '缓存连接中断';
       return null;
     } finally {
       deadline?.cancel();
+      if (!abort.isCompleted) abort.complete();
       try {
         await sink?.close();
       } catch (_) {}

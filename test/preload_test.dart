@@ -21,6 +21,13 @@ class WarmFake extends EpisodePreloader {
   }
 }
 
+class PendingWarm extends EpisodePreloader {
+  PendingWarm() : super(directory: () async => Directory('unused'));
+  final result = Completer<PreloadedEpisode?>();
+  @override
+  Future<PreloadedEpisode?> load(MediaVariant media) => result.future;
+}
+
 void main() {
   late Directory root;
   setUp(() async {
@@ -188,4 +195,126 @@ void main() {
     );
     expect(await root.list().isEmpty, isTrue);
   });
+  test(
+    'a rejected media URL is refreshed rather than reused at switching',
+    () async {
+      final source = FakePlaybackClient();
+      final warm = EpisodePreloader(
+        directory: () async => root,
+        client: () => MockClient((_) async => http.Response('', 403)),
+      );
+      final c = PlaybackController(
+        engine: FakePlaybackEngine(),
+        client: source,
+        preloader: warm,
+      );
+      addTearDown(c.dispose);
+      await c.load('123');
+      final finished = Completer<void>();
+      c.addListener(() {
+        if (!c.preloading &&
+            source.calls.contains('2') &&
+            !finished.isCompleted) {
+          finished.complete();
+        }
+      });
+      c.onProgress(const Duration(seconds: 90), const Duration(seconds: 100));
+      await finished.future.timeout(const Duration(seconds: 3));
+      expect(warm.mediaLinkRejected, isTrue);
+      expect(c.playbackInfoReady, isFalse);
+      await c.play(1);
+      expect(source.calls.where((id) => id == '2').length, 2);
+    },
+  );
+  test(
+    'a complete 206 response is reusable but a partial response is not',
+    () async {
+      for (final complete in [true, false]) {
+        final preloader = EpisodePreloader(
+          directory: () async => root,
+          client: () => MockClient(
+            (_) async => http.Response.bytes(
+              [1, 2, 3, 4],
+              206,
+              headers: {
+                'content-range': complete ? 'bytes 0-3/4' : 'bytes 0-3/8',
+              },
+            ),
+          ),
+        );
+        final result = await preloader.load(
+          const MediaVariant(
+            url: 'https://example.com/clip',
+            quality: 720,
+            codec: 'h264',
+            width: 720,
+            height: 1280,
+          ),
+        );
+        if (complete) {
+          expect(result, isNotNull);
+          expect(result!.media.aspectRatio, 720 / 1280);
+          await result.dispose();
+        } else {
+          expect(result, isNull);
+          expect(preloader.lastFailure, isNotNull);
+        }
+      }
+    },
+  );
+  test(
+    'failed downloads retain resolved media and only retry up to twice',
+    () async {
+      final warm = WarmFake(null), source = FakePlaybackClient();
+      final c = PlaybackController(
+        engine: FakePlaybackEngine(),
+        client: source,
+        preloader: warm,
+        preloadRetryDelay: Duration.zero,
+      );
+      addTearDown(c.dispose);
+      await c.load('123');
+      for (var i = 0; i < 3; i++) {
+        c.onProgress(const Duration(seconds: 90), const Duration(seconds: 100));
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(warm.calls, 2);
+      expect(c.playbackInfoReady, isTrue);
+      final requests = source.calls.where((id) => id == '2').length;
+      await c.play(1);
+      expect(source.calls.where((id) => id == '2').length, requests);
+    },
+  );
+  test(
+    'switching joins an in-flight next-episode preload instead of discarding it',
+    () async {
+      final directory = await Directory('${root.path}/join').create();
+      final file = await File(
+        '${directory.path}/episode.mp4',
+      ).writeAsBytes([1, 2, 3]);
+      final warm = PendingWarm(),
+          engine = FakePlaybackEngine(),
+          source = FakePlaybackClient();
+      final c = PlaybackController(
+        engine: engine,
+        client: source,
+        preloader: warm,
+      );
+      addTearDown(c.dispose);
+      await c.load('123');
+      c.onProgress(const Duration(seconds: 90), const Duration(seconds: 100));
+      await Future<void>.delayed(Duration.zero);
+      final change = c.play(1);
+      warm.result.complete(
+        PreloadedEpisode(
+          MediaVariant(url: file.uri.toString(), quality: 1080, codec: 'hevc'),
+          directory,
+        ),
+      );
+      await change;
+      expect(engine.opened.last.url, file.uri.toString());
+      expect(source.calls.where((id) => id == '2').length, 1);
+      await c.play(2);
+    },
+  );
 }

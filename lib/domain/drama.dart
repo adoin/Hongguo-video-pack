@@ -26,6 +26,10 @@ class MediaVariant {
     this.duration = 0,
     this.downloadable = true,
     this.source = 'App 接口',
+    this.width = 0,
+    this.height = 0,
+    this.rotation = 0,
+    this.sizeBytes = 0,
   });
   final String url, codec;
   final String? key;
@@ -33,6 +37,12 @@ class MediaVariant {
   final double duration;
   final bool downloadable;
   final String source;
+  final int width, height, rotation, sizeBytes;
+  double? get aspectRatio => width <= 0 || height <= 0
+      ? null
+      : rotation.abs() % 180 == 90
+      ? height / width
+      : width / height;
   String get label => '${quality}P · ${codec.toUpperCase()}';
 }
 

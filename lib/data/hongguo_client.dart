@@ -60,6 +60,10 @@ List<MediaVariant> parsePlaybackInfo(Json info) {
       codec: codec == 'bytevc1' ? 'hevc' : codec,
       key: key,
       duration: double.tryParse(text(info['video_duration'])) ?? 0,
+      width: width,
+      height: height,
+      rotation: integer(item['rotation'] ?? item['rotate']),
+      sizeBytes: integer(item['size']),
     );
     if (!results.containsKey(quality) || {'h264', 'avc1'}.contains(codec)) {
       results[quality] = media;
@@ -457,6 +461,10 @@ List<MediaVariant> parseVariants(Json model) {
       duration:
           double.tryParse(text(model['video_duration'] ?? model['duration'])) ??
           0,
+      width: width,
+      height: height,
+      rotation: integer(meta['rotation'] ?? meta['rotate']),
+      sizeBytes: integer(item['size']),
     );
     if (!variants.containsKey(quality) || {'h264', 'avc1'}.contains(codec)) {
       variants[quality] = variant;

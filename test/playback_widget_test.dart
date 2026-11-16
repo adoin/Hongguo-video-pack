@@ -12,9 +12,9 @@ import 'playback_controller_test.dart'
     show FakePlaybackEngine, FakePlaybackClient;
 
 void main() {
-  for (final width in [1320.0, 390.0, 320.0]) {
+  for (final width in [1320.0, 800.0, 390.0, 320.0]) {
     testWidgets('playback, stitching and task entry at $width', (tester) async {
-      tester.view.physicalSize = Size(width, 1100);
+      tester.view.physicalSize = Size(width, width == 800 ? 480 : 1100);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -58,7 +58,7 @@ void main() {
             debugShowCheckedModeBanner: false,
             theme: ThemeData(
               fontFamily: 'Microsoft YaHei',
-              platform: width < 600
+              platform: width < 900
                   ? TargetPlatform.android
                   : TargetPlatform.windows,
               colorScheme: ColorScheme.fromSeed(
@@ -88,9 +88,11 @@ void main() {
           );
           final image = await boundary.toImage();
           final data = await image.toByteData(format: ui.ImageByteFormat.png);
-          await Directory('.local/qa').create(recursive: true);
+          final captureRoot =
+              Platform.environment['HONGGUO_CAPTURE_DIRECTORY'] ?? '.local/qa';
+          await Directory(captureRoot).create(recursive: true);
           await File(
-            '.local/qa/player-${width.toInt()}.png',
+            '$captureRoot/player-${width.toInt()}.png',
           ).writeAsBytes(data!.buffer.asUint8List());
           image.dispose();
         });
@@ -137,7 +139,7 @@ void main() {
           final image = await boundary.toImage();
           final data = await image.toByteData(format: ui.ImageByteFormat.png);
           await File(
-            '.local/qa/episodes-${width.toInt()}.png',
+            '${Platform.environment['HONGGUO_CAPTURE_DIRECTORY'] ?? '.local/qa'}/episodes-${width.toInt()}.png',
           ).writeAsBytes(data!.buffer.asUint8List());
           image.dispose();
         });
