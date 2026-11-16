@@ -9,6 +9,45 @@ spec.loader.exec_module(mirror)
 
 
 class ReleaseTransferTest(unittest.TestCase):
+    def test_retention_orders_versions_numerically_and_removes_old_previews(self):
+        releases = [
+            {'id': 1, 'tag_name': 'v0.3.2', 'prerelease': False},
+            {'id': 2, 'tag_name': 'v0.3.9', 'prerelease': False},
+            {'id': 3, 'tag_name': 'v0.3.10', 'prerelease': True},
+            {'id': 4, 'tag_name': 'v0.3.1', 'prerelease': True},
+            {'id': 5, 'tag_name': 'v0.4.0-rc1', 'prerelease': True},
+            {'id': 6, 'tag_name': 'v0.4.0', 'prerelease': True},
+        ]
+        with patch.object(mirror, 'request', side_effect=[releases, None, None]) as request:
+            self.assertTrue(mirror.retain_two_releases('v0.3.10'))
+        self.assertEqual([call.args for call in request.call_args_list[1:]], [
+            (f'/repos/{mirror.REPOSITORY}/releases/1', 'DELETE'),
+            (f'/repos/{mirror.REPOSITORY}/releases/4', 'DELETE')])
+
+    def test_historical_rerun_does_not_delete_or_restore_releases(self):
+        releases = [{'id': i, 'tag_name': tag, 'prerelease': False}
+                    for i, tag in enumerate(['v0.3.6', 'v0.3.7'], 1)]
+        with patch.object(mirror, 'request', return_value=releases) as request:
+            self.assertFalse(mirror.retain_two_releases('v0.3.2'))
+        self.assertEqual(request.call_count, 1)
+
+    def test_retention_reads_all_pages_before_deleting(self):
+        first = [{'id': i + 1, 'tag_name': f'v0.0.{i}', 'prerelease': False} for i in range(100)]
+        last = [{'id': 101, 'tag_name': 'v0.0.100', 'prerelease': False}]
+        with patch.object(mirror, 'request', side_effect=[first, last] + [None] * 100) as request:
+            self.assertTrue(mirror.retain_two_releases('v0.0.101'))
+        self.assertIn('page=2', request.call_args_list[1].args[0])
+        self.assertEqual(len([c for c in request.call_args_list if len(c.args) > 1]), 100)
+
+    def test_invalid_delete_plan_fails_before_any_delete(self):
+        releases = [{'id': 1, 'tag_name': 'v0.3.1', 'prerelease': False},
+                    {'id': 'bad', 'tag_name': 'v0.3.2', 'prerelease': False},
+                    {'id': 3, 'tag_name': 'v0.3.6', 'prerelease': False}]
+        with patch.object(mirror, 'request', return_value=releases) as request:
+            with self.assertRaisesRegex(RuntimeError, 'Invalid Gitee release ID'):
+                mirror.retain_two_releases('v0.3.7')
+        self.assertEqual(request.call_count, 1)
+
     def test_upload_error_diagnostic_redacts_credentials_and_urls(self):
         with patch.object(mirror, 'TOKEN', 'secret-value'):
             detail = mirror.upload_error_detail(b'{"message":"quota exceeded", "access_token":"secret-value", "url":"https://example.com/private?token=other"}')
@@ -57,6 +96,7 @@ class ReleaseTransferTest(unittest.TestCase):
              patch.object(mirror.subprocess, 'check_output', return_value=
                 b'{"isDraft":false,"isPrerelease":false,"body":"Original notes"}'), \
              patch.object(mirror, 'request', side_effect=request), \
+             patch.object(mirror, 'retain_two_releases', return_value=True), \
              patch.object(mirror, 'upload_with_retries') as upload, \
              patch.object(Path, 'unlink') as remove:
             mirror.mirror_release('v0.3.0', Path('unused-test-directory'))

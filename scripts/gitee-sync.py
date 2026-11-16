@@ -26,7 +26,8 @@ def request(path, method='GET', body=None, raw=None, content_type=None, authenti
     url = path if path.startswith('https://') else 'https://gitee.com/api/v5' + path
     try:
         with urllib.request.urlopen(urllib.request.Request(url, data=raw, headers=headers, method=method), timeout=30) as response:
-            return json.load(response)
+            payload = response.read()
+            return json.loads(payload) if payload.strip() else None
     except urllib.error.HTTPError as error:
         if error.code == 404 and method == 'GET':
             return None
@@ -130,6 +131,47 @@ def upload_with_retries(release_id, path, endpoint):
             print(f'Retrying attachment upload ({attempt + 2}/3).', flush=True)
 
 
+def stable_version(tag):
+    match = re.fullmatch(r'v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', tag or '')
+    return tuple(map(int, match.groups())) if match else None
+
+
+def retain_two_releases(tag):
+    """Make room before uploading; never delete Git tags or GitHub assets."""
+    releases = []
+    page = 1
+    while True:
+        batch = request(f'/repos/{REPOSITORY}/releases?per_page=100&page={page}')
+        if not isinstance(batch, list):
+            raise RuntimeError('Invalid Gitee release listing; refusing retention cleanup')
+        releases.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
+    target = stable_version(tag)
+    versions = {target}
+    for release in releases:
+        version = stable_version(release.get('tag_name'))
+        if version is not None and release.get('prerelease') is False:
+            versions.add(version)
+    keep = sorted(versions, reverse=True)[:2]
+    if target not in keep:
+        print('Skipping historical mirror outside the latest two stable versions: ' + tag)
+        return False
+    # Validate the entire deletion plan before making any mutation. Non-version
+    # releases and future previews are outside this policy and remain untouched.
+    obsolete = [release for release in releases
+                if stable_version(release.get('tag_name')) is not None
+                and stable_version(release['tag_name']) < min(keep)]
+    if any(type(release.get('id')) is not int or release['id'] <= 0 for release in obsolete):
+        raise RuntimeError('Invalid Gitee release ID; refusing retention cleanup')
+    print('Keeping Gitee releases: ' + ', '.join('v' + '.'.join(map(str, v)) for v in keep), flush=True)
+    for release in obsolete:
+        request(f'/repos/{REPOSITORY}/releases/{release["id"]}', 'DELETE')
+        print('Removed obsolete Gitee release and attachments: ' + release['tag_name'], flush=True)
+    return True
+
+
 def mirror_release(tag, directory):
     if not re.fullmatch(r'v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', tag):
         raise RuntimeError('Only stable vMAJOR.MINOR.PATCH tags may be mirrored')
@@ -138,6 +180,8 @@ def mirror_release(tag, directory):
                                                  '--json', 'isDraft,isPrerelease,body']))
     if metadata['isDraft'] or metadata['isPrerelease']:
         raise RuntimeError('Refusing to mirror draft/prerelease')
+    if not retain_two_releases(tag):
+        return
     # Source/tag pushes have their own workflow. A newer main may already have
     # reached Gitee while this release job was downloading packages; pushing the
     # older checkout here would fail non-fast-forward and block attachments.

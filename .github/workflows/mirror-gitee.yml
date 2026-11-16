@@ -27,7 +27,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: gitee-release-${{ inputs.tag }}
+  group: gitee-release-retention
   cancel-in-progress: false
 jobs:
   mirror:

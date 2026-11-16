@@ -1,7 +1,7 @@
 ---
 status: active
 kind: project-specification
-updated_at: 2026-10-21
+updated_at: 2026-11-16
 modules: [自动更新, GitHub Release, Gitee 镜像]
 ---
 
@@ -24,6 +24,7 @@ modules: [自动更新, GitHub Release, Gitee 镜像]
 - GitHub Release 成功后调用 `mirror-gitee.yml`，支持手动补同步旧正式版。GITEE_ACCESS 只在 Actions Secret 使用。镜像上传 Setup、APK、源码及 SHA256SUMS；便携 ZIP 留在 GitHub。
 - 镜像先标记 prerelease，全部附件上传成功后转正式版。用户 2026-10-21 明确调整：LA 上传 Gitee 后不再下载附件验证；每个文件最多 3 次上传尝试（含首次），成功即删除本地文件，最终失败也由任务 always 清理剩余下载包。响应丢失只查询附件元数据，已存在则不重复上传。GitHub → LA 的来源 SHA256 校验与客户端安装前校验保留。
 - 用户验收前保持 active；构建、模拟更新、真实镜像同步和手机系统安装应分别报告。
+- 2026-11-16 用户批准 Gitee 仅保留当前及前一正式版。上传前按三段数字版本排序，删除更旧 Gitee 发行版及其附件以腾出仓库附件配额，保留 Git 标签、GitHub 与夸克历史；旧版手动补同步不得复活两版窗口外的发行版。非正式版本号及未来预览不纳入自动删除。镜像任务跨版本串行，避免清理与上传相互干扰。
 
 ## LA 镜像发布节点
 
