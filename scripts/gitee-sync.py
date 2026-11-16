@@ -82,6 +82,16 @@ def packages(directory, version):
     return names, hashes
 
 
+def upload_error_detail(raw):
+    """Expose bounded API diagnostics without credentials or response URLs."""
+    detail = raw.decode('utf-8', errors='replace')[:4096]
+    if TOKEN:
+        detail = detail.replace(TOKEN, '[redacted]')
+    detail = re.sub(r'https?://[^\s"<>]+', '[url]', detail)
+    detail = re.sub(r'(?i)(access_token|authorization|password)(["\s:=]+)[^\s,}<]+', r'\1\2[redacted]', detail)
+    return ' '.join(detail.split())[:600]
+
+
 def upload(release_id, path):
     print('Uploading mirror attachment: ' + path.name, flush=True)
     # Stream multipart with curl rather than buffering a large request body.
@@ -93,10 +103,10 @@ def upload(release_id, path):
                              '--connect-timeout', '20', '--max-time', timeout, '--speed-limit', '1024', '--speed-time', '60',
                              '--form', 'file=@' + str(path), '--write-out', '\n%{http_code} %{size_upload} %{time_total}'],
                             input=config.encode(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    _, _, metrics = result.stdout.rpartition(b'\n')
+    response_body, _, metrics = result.stdout.rpartition(b'\n')
     status = metrics.split(b' ')[0]
     if result.returncode or status not in (b'200', b'201'):
-        raise RuntimeError('Attachment upload failed (curl code ' + str(result.returncode) + ', HTTP/bytes/seconds ' + metrics.decode(errors='replace') + ')')
+        raise RuntimeError('Attachment upload failed (curl code ' + str(result.returncode) + ', HTTP/bytes/seconds ' + metrics.decode(errors='replace') + '): ' + upload_error_detail(response_body))
 
 
 def upload_with_retries(release_id, path, endpoint):

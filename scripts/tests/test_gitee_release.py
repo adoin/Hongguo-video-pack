@@ -9,6 +9,14 @@ spec.loader.exec_module(mirror)
 
 
 class ReleaseTransferTest(unittest.TestCase):
+    def test_upload_error_diagnostic_redacts_credentials_and_urls(self):
+        with patch.object(mirror, 'TOKEN', 'secret-value'):
+            detail = mirror.upload_error_detail(b'{"message":"quota exceeded", "access_token":"secret-value", "url":"https://example.com/private?token=other"}')
+        self.assertIn('quota exceeded', detail)
+        self.assertNotIn('secret-value', detail)
+        self.assertNotIn('example.com', detail)
+        self.assertLessEqual(len(detail), 600)
+
     def test_upload_stops_after_three_failed_attempts(self):
         with patch.object(mirror, 'upload', side_effect=RuntimeError('network')) as upload, \
              patch.object(mirror, 'request', return_value={'assets': []}):
