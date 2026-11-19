@@ -23,12 +23,17 @@ The protocol adapters include code adapted from:
 - The bundled native libmpv and its FFmpeg codecs retain their own GPL/LGPL and third-party terms. The Windows binary is the unmodified `2023-09-24` x86_64 build from https://github.com/media-kit/libmpv-win32-video-build/releases/tag/2023-09-24 ; Android libraries are the unmodified `v1.1.7` builds from https://github.com/media-kit/libmpv-android-video-build/releases/tag/v1.1.7 . Corresponding build recipes and source references are maintained in those repositories; mpv source is https://github.com/mpv-player/mpv . Do not describe the native libraries as covered solely by the wrappers' MIT license. Application source, dependency lockfile and reproducible build instructions accompany the distribution.
 
 Application distributions containing the GPL adapters and media libraries must be redistributed consistently with their GPL terms, including corresponding source and notices. The acceptance package is delivered with this repository's application source and reproducible build instructions.
+
 ## OpenHongguo
 
 The Android playback plug-in and the Windows playback helper use
 [OpenHongguo v0.4.0](https://github.com/beilunyang/openhongguo/tree/v0.4.0),
 Copyright 2026 beilunyang. See `licenses/OpenHongguo-LICENSE.txt` for the
-upstream license text and the upstream README for its usage statements.
+upstream license text. The [upstream usage statement](https://github.com/beilunyang/openhongguo/tree/v0.4.0#免责声明)
+describes the SDK as intended for learning and research and prohibits commercial use,
+unlawful use, infringement, and large-scale collection. Hongputao is distributed
+free of charge, without advertising or paid features. The application source
+retains the GPL-3.0-only license.
 
 The native Go runtime and gomobile code use the Go BSD license.
 See `licenses/Go-LICENSE.txt`.
