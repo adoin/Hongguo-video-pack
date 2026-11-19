@@ -399,6 +399,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "9.6.2"
+  openhongguo:
+    dependency: "direct main"
+    description:
+      name: openhongguo
+      sha256: "21c368f4e9e20a42c981946a329519cbebc5f45e6aa6d0c0af5195e6ff8467b1"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.0"
   package_info_plus:
     dependency: "direct main"
     description:

@@ -7,6 +7,7 @@ $release = Join-Path $ProjectRoot 'build/windows/x64/runner/Release'
 $apk = Join-Path $ProjectRoot 'build/app/outputs/flutter-apk/app-release.apk'
 if (!(Test-Path -LiteralPath (Join-Path $release 'hongguo_studio.exe'))) { throw 'Build Windows release first.' }
 if (!(Test-Path -LiteralPath (Join-Path $release 'runtime/node.exe'))) { throw 'Bundled signing runtime is missing.' }
+if (!(Test-Path -LiteralPath (Join-Path $release 'runtime/openhongguo-playback.exe'))) { throw 'Bundled playback component is missing.' }
 if (!(Test-Path -LiteralPath $apk)) { throw 'Build Android release first.' }
 $dist = Join-Path $ProjectRoot 'dist'
 New-Item -ItemType Directory -Force $dist | Out-Null

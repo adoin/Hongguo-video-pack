@@ -1,13 +1,14 @@
 name: hongguo_studio
 description: A borderless desktop and Android short drama assembly workspace.
 publish_to: none
-version: 0.3.7+16
+version: 1.0.0+17
 environment:
   sdk: ^3.10.0
 dependencies:
   flutter:
     sdk: flutter
   crypto: ^3.0.7
+  openhongguo: 0.4.0
   pointycastle: ^4.0.0
   http: ^1.6.0
   flutter_secure_storage: 10.0.0

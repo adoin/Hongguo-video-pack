@@ -76,6 +76,22 @@ set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
 find_program(HONGGUO_NODE_EXECUTABLE NAMES node.exe node REQUIRED)
 install(PROGRAMS "${HONGGUO_NODE_EXECUTABLE}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}/runtime" COMPONENT Runtime)
 
+find_program(HONGGUO_GO_EXECUTABLE NAMES go.exe go REQUIRED)
+set(PLAYBACK_BRIDGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/playback_bridge")
+set(PLAYBACK_BRIDGE_EXE "${CMAKE_CURRENT_BINARY_DIR}/openhongguo-playback.exe")
+add_custom_command(
+  OUTPUT "${PLAYBACK_BRIDGE_EXE}"
+  COMMAND "${CMAKE_COMMAND}" -E env CGO_ENABLED=0 GOWORK=off GOTOOLCHAIN=local
+    "${HONGGUO_GO_EXECUTABLE}" build -mod=readonly -trimpath -ldflags "-s -w -H=windowsgui"
+    -o "${PLAYBACK_BRIDGE_EXE}" .
+  WORKING_DIRECTORY "${PLAYBACK_BRIDGE_DIR}"
+  DEPENDS "${PLAYBACK_BRIDGE_DIR}/main.go" "${PLAYBACK_BRIDGE_DIR}/go.mod" "${PLAYBACK_BRIDGE_DIR}/go.sum"
+  VERBATIM
+)
+add_custom_target(hongputao_playback_bridge ALL DEPENDS "${PLAYBACK_BRIDGE_EXE}")
+add_dependencies(${BINARY_NAME} hongputao_playback_bridge)
+install(PROGRAMS "${PLAYBACK_BRIDGE_EXE}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}/runtime" COMPONENT Runtime)
+
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
 

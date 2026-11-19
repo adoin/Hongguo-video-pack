@@ -1,11 +1,14 @@
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:math';
+
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
+
 import '../domain/drama.dart';
 import 'request_signer.dart';
 import 'media_crypto.dart';
+import 'openhongguo_playback.dart';
 import 'visitor_identity.dart';
 import '../services/app_logs.dart';
 
@@ -82,10 +85,12 @@ class HongguoClient {
     VisitorIdentityProvider? identities,
   }) : _http = client ?? LoggedHttpClient(),
        identities = identities ?? VisitorIdentityStore.shared,
-       signer = signer ?? NativeRequestSigner();
+       signer = signer ?? NativeRequestSigner(),
+       _openHongguo = client == null && signer == null && identities == null;
   final http.Client _http;
   final RequestSigner signer;
   final VisitorIdentityProvider identities;
+  final bool _openHongguo;
   final String deviceId = _deviceId();
   final String installId = _deviceId();
   static const appHost = 'api5-normal-sinfonlineb.fqnovel.com';
@@ -124,8 +129,7 @@ class HongguoClient {
           uri,
           body: body,
           headers: {
-            'User-Agent':
-                'com.phoenix.read/73532 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)',
+            'User-Agent': 'com.phoenix.read/73532 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)',
             'Accept': 'application/json',
             'Content-Type': 'application/json; charset=utf-8',
             'X-XS-From-Web': '0',
@@ -182,6 +186,9 @@ class HongguoClient {
     Episode episode, {
     String? seriesId,
   }) async {
+    if (_openHongguo && OpenHongguoPlayback.isSupported) {
+      return OpenHongguoPlayback.shared.resolve(episode);
+    }
     final visitor = await identities.get();
     try {
       return await _fetchVariants(episode, visitor);

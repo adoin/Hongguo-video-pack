@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+
 import '../data/hongguo_client.dart';
 import '../domain/drama.dart';
 import 'playback_engine.dart';
@@ -9,9 +11,8 @@ import 'smoke_check.dart';
 
 /// Real native renderer/decoder verification; no signed URLs or keys in reports.
 Future<void> runPlaybackAcceptance() async {
-  final directory = await Directory(
-    '.local/playback-acceptance',
-  ).create(recursive: true);
+  final directory = await Directory('.local/playback-acceptance')
+      .create(recursive: true);
   final report = <String, dynamic>{
     'platform': Platform.operatingSystem,
     'passed': false,
@@ -29,10 +30,10 @@ Future<void> runPlaybackAcceptance() async {
   );
   try {
     await engine.player.setVolume(0);
-    final drama = await client.fetchDrama('7671966197985856536');
+    final drama = await client.fetchDrama('7697459724635098174');
     if (drama.episodes.length < 2) throw StateError('Insufficient episodes');
     final samples = <Map<String, dynamic>>[];
-    for (var i = 0; i < 2; i++) {
+    for (final i in [0, 1, if (drama.episodes.length >= 4) 3]) {
       final media = chooseQuality(
         await client.fetchVariants(drama.episodes[i], seriesId: drama.id),
         1080,
@@ -80,8 +81,7 @@ Future<void> runPlaybackAcceptance() async {
     runApp(const SizedBox.shrink());
     await WidgetsBinding.instance.endOfFrame;
     await engine.dispose();
-    await File(
-      '${directory.path}/result.json',
-    ).writeAsString(jsonEncode(report));
+    await File('${directory.path}/result.json')
+        .writeAsString(jsonEncode(report));
   }
 }
