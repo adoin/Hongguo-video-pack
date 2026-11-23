@@ -8,6 +8,7 @@ import 'hongguo_client.dart' show object, text, integer, Json;
 import 'app_search_client.dart';
 import 'signed_app_search.dart';
 import 'api_package.dart';
+import 'openhongguo_playback.dart';
 import '../services/api_packages.dart';
 import '../services/app_logs.dart';
 
@@ -24,6 +25,15 @@ class DiscoveryClient {
   AppSearchClient? appSearch;
   final ApiPackage Function()? apiPackage;
   ApiPackage get _rules => apiPackage?.call() ?? ApiPackages.shared.current;
+  bool get theaterSupported => OpenHongguoPlayback.isSupported;
+  String get theaterChannel => _rules.theaterChannel;
+
+  Future<DiscoveryPage> theater(
+    String channel, {
+    String? cursor,
+    required int page,
+  }) =>
+      OpenHongguoPlayback.shared.discover(channel, cursor: cursor, page: page);
   final Duration searchTimeout;
   Future<void>? _searchReady;
   bool _appUnavailable = false;

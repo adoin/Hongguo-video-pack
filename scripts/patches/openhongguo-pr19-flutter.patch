@@ -1,0 +1,37 @@
+diff --git a/bindings/flutter/lib/src/types.dart b/bindings/flutter/lib/src/types.dart
+index 4ff230f..18a1acf 100644
+--- a/bindings/flutter/lib/src/types.dart
++++ b/bindings/flutter/lib/src/types.dart
+@@ -1380,8 +1380,6 @@ class Series {
+   final String vid;
+   /// DurationSeconds 是整部剧的总时长，不是单集时长。
+   final int durationSeconds;
+-  /// PlayCount 是服务端上报的播放量。
+-  final int playCount;
+   /// RecText 是卡片上的热度角标文案，例如 "4390万热度"。
+   final String recText;
+   /// Vertical 标记竖屏短剧；首页漫剧的卡片为 false。
+@@ -1432,7 +1430,6 @@ class Series {
+     this.words = 0,
+     this.vid = '',
+     this.durationSeconds = 0,
+-    this.playCount = 0,
+     this.recText = '',
+     this.vertical,
+     this.status = const SeriesStatus(0),
+@@ -1468,7 +1465,6 @@ class Series {
+         words: _asInt(j['words']),
+         vid: _asString(j['vid']),
+         durationSeconds: _asInt(j['duration_seconds']),
+-        playCount: _asInt(j['play_count']),
+         recText: _asString(j['rec_text']),
+         vertical: _asBool(j['vertical']),
+         status: SeriesStatus(_asInt(j['status'])),
+@@ -1504,7 +1500,6 @@ class Series {
+         'words': words,
+         'vid': vid,
+         'duration_seconds': durationSeconds,
+-        'play_count': playCount,
+         'rec_text': recText,
+         if (vertical != null) 'vertical': vertical!,
+         'status': status.value,

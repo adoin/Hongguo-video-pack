@@ -295,9 +295,27 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
 
   final link = TextEditingController(text: demoUrl);
   bool _saving = false;
-  late final discovery = widget.discoveryController ?? DiscoveryController();
+  late final discovery =
+      widget.discoveryController ??
+      DiscoveryController(
+        mode: (Platform.isWindows || Platform.isAndroid)
+            ? DiscoveryMode.theater
+            : DiscoveryMode.ranking,
+      );
   late int page = widget.controller == null ? 0 : 1;
   final scroll = ScrollController();
+
+  void _continueTheater() {
+    if (page == 0 &&
+        scroll.hasClients &&
+        scroll.position.extentAfter < 420 &&
+        discovery.mode == DiscoveryMode.theater &&
+        !discovery.loading &&
+        discovery.error == null &&
+        discovery.result?.hasMore == true) {
+      unawaited(discovery.refresh(more: true));
+    }
+  }
 
   void _navigate(int value) {
     setState(() => page = value);
@@ -493,6 +511,7 @@ class _StudioHomeState extends State<StudioHome> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    scroll.addListener(_continueTheater);
     if (widget.controller == null) {
       _preparation = _prepare();
       discovery.refresh();

@@ -35,5 +35,12 @@ unlawful use, infringement, and large-scale collection. Hongputao is distributed
 free of charge, without advertising or paid features. The application source
 retains the GPL-3.0-only license.
 
+The native SDK build pins [PR #19](https://github.com/beilunyang/openhongguo/pull/19)
+at commit `113f076383f5f1b6cb14943806625b53bff2ec1f` for theater cards, and applies
+the [PR #16](https://github.com/beilunyang/openhongguo/pull/16) patch from commit
+`3dc401af105cea273ea63f34047bc0d9e685c667` for the video-tab fallback.
+The build script and patches are included under `scripts/`, including a local
+fix for a duplicate Dart field in the theater PR's bindings.
+
 The native Go runtime and gomobile code use the Go BSD license.
 See `licenses/Go-LICENSE.txt`.

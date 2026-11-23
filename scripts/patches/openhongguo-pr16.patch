@@ -1,0 +1,343 @@
+diff --git a/docs/development.md b/docs/development.md
+index 7b39a20..7254a81 100644
+--- a/docs/development.md
++++ b/docs/development.md
+@@ -67,7 +67,9 @@ go test -tags live -run TestLiveContract -v ./internal/contract
+ `ResolvePlayback` 优先使用 V5 手机端接口 `/novel/player/multi_video_model/player/v1`。
+ 请求体先 gzip，再对实际发送的字节生成 V5 Medusa、Helios 和 `X-SS-STUB`；播放请求不携带游客 Cookie。
+ 客户端复用签名进程上下文和匿名设备档案。V5 空响应先使用原设备重新签名重试一次，
+-再尝试旧播放接口；达到设备恢复条件后，沿用 `Options.DeviceResets` 的次数限制。
++再改用无请求体的 `video_tab` 接口，最后尝试旧播放接口；达到设备恢复条件后，沿用
++`Options.DeviceResets` 的次数限制。`video_tab` 只带 V5 的 Medusa、Helios 和
++`X-Khronos` 头，不带 `X-SS-STUB`、`Content-Type` 或游客 Cookie。
+ 限流、认证、业务错误和解析错误直接沿用现有错误语义。
+ 
+ 解析器同时支持分组和平铺模型，以及明文、Base64、模型 `key_seed` 保护的主备地址。
+diff --git a/internal/protocol/parse.go b/internal/protocol/parse.go
+index e5d1336..618e12e 100644
+--- a/internal/protocol/parse.go
++++ b/internal/protocol/parse.go
+@@ -766,6 +766,12 @@ func ParsePlayback(raw []byte, episodeID string) (*model.Playback, error) {
+ 			return nil, fmt.Errorf("playback group is not an object: %w", err)
+ 		}
+ 		entry = grouped
++	} else if group, ok := entry["video_model_data"]; ok {
++		var grouped map[string]json.RawMessage
++		if err := json.Unmarshal(group, &grouped); err != nil {
++			return nil, fmt.Errorf("playback video_model_data is not an object: %w", err)
++		}
++		entry = grouped
+ 	}
+ 	if _, ok := entry["video_model"]; !ok {
+ 		row, ok := entry[episodeID]
+diff --git a/internal/protocol/parse_test.go b/internal/protocol/parse_test.go
+index 39a2b9d..b3447a1 100644
+--- a/internal/protocol/parse_test.go
++++ b/internal/protocol/parse_test.go
+@@ -1052,3 +1052,16 @@ func TestSuggestPairsNameThePrefixQ(t *testing.T) {
+ 		t.Fatalf("suggest pairs = %v", got)
+ 	}
+ }
++
++func TestParsePlaybackReadsVideoTabGroup(t *testing.T) {
++	playback, err := ParsePlayback(fixture(t, "video-tab-playback.json"), "7100000000000301")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if playback.Protected || len(playback.Streams) != 1 {
++		t.Fatalf("playback = %+v", playback)
++	}
++	if playback.Streams[0].Definition != "360p" || playback.Streams[0].URL != "https://media.invalid/video-tab-360.mp4" {
++		t.Fatalf("stream = %+v", playback.Streams[0])
++	}
++}
+diff --git a/internal/protocol/playback_v5.go b/internal/protocol/playback_v5.go
+index 4b327e6..0699a70 100644
+--- a/internal/protocol/playback_v5.go
++++ b/internal/protocol/playback_v5.go
+@@ -11,6 +11,8 @@ import (
+ 
+ const (
+ 	PathPlaybackV5      = "/novel/player/multi_video_model/player/v1"
++	PathVideoTab        = "/reading/bookapi/video_tab/multi_video_model/v1/"
++	VideoTabUserAgent   = "com.phoenix.read/73932 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)"
+ 	PlaybackVersionCode = 74332
+ 	PlaybackVersionName = "7.4.3.32"
+ )
+@@ -67,6 +69,36 @@ func PlaybackV5Pairs(id SearchIdentity) [][2]string {
+ 	}
+ }
+ 
++// VideoTabPairs is the bodyless video_tab query used when the V5 player
++// endpoint answers an empty model. The fixed phone template matches the
++// upstream 7.4.3.32 client; only the anonymous identity and episode vary.
++func VideoTabPairs(episodeID string, id SearchIdentity) [][2]string {
++	d := id.Device.OrDefault()
++	return [][2]string{
++		{"aid", AID},
++		{"app_name", AppName},
++		{"version_code", strconv.Itoa(PlaybackVersionCode)},
++		{"version_name", PlaybackVersionName},
++		{"channel", d.Channel},
++		{"device_platform", "android"},
++		{"device_type", d.Model},
++		{"os_version", d.OSVersion},
++		{"update_version_code", strconv.Itoa(PlaybackVersionCode)},
++		{"iid", id.InstallID},
++		{"cdid", id.CDID},
++		{"device_id", id.DeviceID},
++		{"video_id", episodeID},
++		{"video_id_type", "0"},
++		{"device_level", "1"},
++		{"need_all_video_definition", "1"},
++		{"need_mp4_align", "0"},
++		{"use_os_player", "0"},
++		{"video_platform", "1024"},
++		{"source", "0"},
++		{"from_video_id", ""},
++	}
++}
++
+ // PlaybackV5Body 只压缩一次；调用方将返回的原始字节同时用于签名和发送。
+ //
+ // device_level 保持 1，和 App 的 3 不同：3 会让服务端把 1080p 以下的码流
+diff --git a/internal/protocol/playback_v5_test.go b/internal/protocol/playback_v5_test.go
+new file mode 100644
+index 0000000..24c626a
+--- /dev/null
++++ b/internal/protocol/playback_v5_test.go
+@@ -0,0 +1,35 @@
++package protocol
++
++import (
++	"testing"
++
++	"github.com/beilunyang/openhongguo/sdk/model"
++)
++
++func TestVideoTabPairsUseIdentityDevice(t *testing.T) {
++	id := SearchIdentity{
++		DeviceID:  "device-id",
++		InstallID: "install-id",
++		CDID:      "cdid",
++		Device: model.Device{
++			Channel:   "xiaomi_8662_64",
++			Model:     "23127PN0CC",
++			OSVersion: "14",
++		},
++	}
++
++	got := make(map[string]string)
++	for _, pair := range VideoTabPairs("episode-id", id) {
++		got[pair[0]] = pair[1]
++	}
++
++	for key, want := range map[string]string{
++		"channel":     "xiaomi_8662_64",
++		"device_type": "23127PN0CC",
++		"os_version":  "14",
++	} {
++		if got[key] != want {
++			t.Errorf("VideoTabPairs[%q] = %q, want %q", key, got[key], want)
++		}
++	}
++}
+diff --git a/internal/protocol/sign/playback_v5_test.go b/internal/protocol/sign/playback_v5_test.go
+index 7fc7644..8eaa29a 100644
+--- a/internal/protocol/sign/playback_v5_test.go
++++ b/internal/protocol/sign/playback_v5_test.go
+@@ -23,3 +23,23 @@ func TestPlaybackV5SignKeepsTheTicketSlot(t *testing.T) {
+ 		t.Fatalf("appended ticket query = %s err %v", query, err)
+ 	}
+ }
++
++func TestPlaybackV5SignOmitsStubForBodylessRequest(t *testing.T) {
++	s := NewPlaybackV5Signer(1_794_000_000_000)
++	query, headers, err := s.Sign([][2]string{{"video_id", "7100000000000301"}}, 1_794_000_000_123, nil, nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !strings.Contains(query, "video_id=7100000000000301") || !strings.Contains(query, "_rticket=") {
++		t.Fatalf("query = %s", query)
++	}
++	if headers["x-khronos"] == "" || headers["x-helios"] == "" || headers["x-medusa"] == "" {
++		t.Fatalf("headers = %v", headers)
++	}
++	if _, ok := headers["x-ss-stub"]; ok {
++		t.Fatalf("bodyless request carried x-ss-stub: %v", headers)
++	}
++	if _, ok := headers["Content-Type"]; ok {
++		t.Fatalf("bodyless request carried Content-Type: %v", headers)
++	}
++}
+diff --git a/sdk/catalog_test.go b/sdk/catalog_test.go
+index 5edcb60..5ea65df 100644
+--- a/sdk/catalog_test.go
++++ b/sdk/catalog_test.go
+@@ -1451,3 +1451,72 @@ func TestContentKeyUnwrapsKeyMaterial(t *testing.T) {
+ 		t.Fatal("nil model accepted")
+ 	}
+ }
++
++func TestResolvePlaybackFallsBackToVideoTab(t *testing.T) {
++	var paths []string
++	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		paths = append(paths, r.URL.Path)
++		switch r.URL.Path {
++		case protocol.PathRegister:
++			w.Header().Set("Content-Type", "application/json")
++			_, _ = w.Write(fixture(t, "register-response.json"))
++		case protocol.PathPlaybackV5:
++			w.WriteHeader(http.StatusOK)
++		case protocol.PathVideoTab:
++			w.Header().Set("Content-Type", "application/json")
++			_, _ = w.Write(fixture(t, "video-tab-playback.json"))
++		default:
++			http.NotFound(w, r)
++		}
++	})
++	client, _ := testClient(t, handler)
++	playback, err := client.ResolvePlayback(context.Background(), "7100000000000301", sdk.PlaybackOptions{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(playback.Streams) != 1 || playback.Streams[0].Definition != "360p" {
++		t.Fatalf("playback = %+v", playback)
++	}
++	if !containsPath(paths, protocol.PathPlaybackV5) || !containsPath(paths, protocol.PathVideoTab) {
++		t.Fatalf("paths = %v", paths)
++	}
++}
++
++func containsPath(paths []string, want string) bool {
++	for _, path := range paths {
++		if path == want {
++			return true
++		}
++	}
++	return false
++}
++
++func TestResolvePlaybackFallsBackToLegacyWhenVideoTabIsEmpty(t *testing.T) {
++	var paths []string
++	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		paths = append(paths, r.URL.Path)
++		switch r.URL.Path {
++		case protocol.PathRegister:
++			w.Header().Set("Content-Type", "application/json")
++			_, _ = w.Write(fixture(t, "register-response.json"))
++		case protocol.PathPlaybackV5, protocol.PathVideoTab:
++			w.WriteHeader(http.StatusOK)
++		case protocol.PathPlayback:
++			w.Header().Set("Content-Type", "application/json")
++			_, _ = w.Write(fixture(t, "clear-playback.json"))
++		default:
++			http.NotFound(w, r)
++		}
++	})
++	client, _ := testClient(t, handler)
++	playback, err := client.ResolvePlayback(context.Background(), "7100000000000201", sdk.PlaybackOptions{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(playback.Streams) != 2 {
++		t.Fatalf("playback = %+v", playback)
++	}
++	if !containsPath(paths, protocol.PathVideoTab) || !containsPath(paths, protocol.PathPlayback) {
++		t.Fatalf("paths = %v", paths)
++	}
++}
+diff --git a/sdk/media.go b/sdk/media.go
+index 725b73e..f65892e 100644
+--- a/sdk/media.go
++++ b/sdk/media.go
+@@ -66,21 +66,32 @@ func (c *Client) ResolvePlayback(ctx context.Context, episodeID string, _ Playba
+ 				return nil, err
+ 			}
+ 			v5Err := err
+-			legacyBody, bodyErr := protocol.PlaybackBody(episodeID)
+-			if bodyErr != nil {
+-				return nil, bodyErr
+-			}
+-			ticket := c.clock().UnixMilli()
+-			query, headers := sign.SignPlaybackPOST(protocol.PathPlayback, protocol.DeviceQueryPairs(c.identity(p)), ticket, p.DeviceID, protocol.VersionName, legacyBody, nil)
+-			raw, _, err = c.doRaw(ctx, "POST", c.apiOrigin+protocol.PathPlayback+"?"+query, anonymousHeaders(c, p, ticket, headers), legacyBody)
+-			if ctxErr := ctx.Err(); ctxErr != nil {
+-				return nil, ctxErr
+-			}
+-			if err != nil {
+-				if playbackRouteUnavailable(err) {
+-					return nil, v5Err
++			tabRaw, tabErr := c.resolveVideoTab(ctx, p, episodeID)
++			if tabErr == nil && len(tabRaw) > 0 {
++				raw = tabRaw
++			} else {
++				if ctxErr := ctx.Err(); ctxErr != nil {
++					return nil, ctxErr
++				}
++				if tabErr != nil && !errors.Is(tabErr, ErrAnonymousLimited) && !playbackRouteUnavailable(tabErr) {
++					return nil, tabErr
++				}
++				legacyBody, bodyErr := protocol.PlaybackBody(episodeID)
++				if bodyErr != nil {
++					return nil, bodyErr
++				}
++				ticket := c.clock().UnixMilli()
++				query, headers := sign.SignPlaybackPOST(protocol.PathPlayback, protocol.DeviceQueryPairs(c.identity(p)), ticket, p.DeviceID, protocol.VersionName, legacyBody, nil)
++				raw, _, err = c.doRaw(ctx, "POST", c.apiOrigin+protocol.PathPlayback+"?"+query, anonymousHeaders(c, p, ticket, headers), legacyBody)
++				if ctxErr := ctx.Err(); ctxErr != nil {
++					return nil, ctxErr
++				}
++				if err != nil {
++					if playbackRouteUnavailable(err) {
++						return nil, v5Err
++					}
++					return nil, err
+ 				}
+-				return nil, err
+ 			}
+ 		}
+ 		playback, err := protocol.ParsePlayback(raw, episodeID)
+@@ -99,6 +110,25 @@ func playbackRouteUnavailable(err error) bool {
+ 	return errors.As(err, &api) && (api.HTTPStatus == 404 || api.HTTPStatus == 405)
+ }
+ 
++// resolveVideoTab asks the bodyless video_tab route for the episode model.
++// It is a fallback for devices or episodes whose V5 player POST returns an
++// empty body; the response has the same TTVideoEngine model shape.
++func (c *Client) resolveVideoTab(ctx context.Context, p *DeviceProfile, episodeID string) ([]byte, error) {
++	query, signed, err := c.playbackSigner.Sign(protocol.VideoTabPairs(episodeID, c.identity(p)), c.clock().UnixMilli(), nil, nil)
++	if err != nil {
++		return nil, err
++	}
++	headers := map[string]string{
++		"User-Agent": protocol.VideoTabUserAgent,
++		"Accept":     "application/json",
++	}
++	for name, value := range signed {
++		headers[name] = value
++	}
++	raw, _, err := c.doRaw(ctx, "GET", c.apiOrigin+protocol.PathVideoTab+"?"+query, headers, nil)
++	return raw, err
++}
++
+ // ContentKey 从播放模型算出加密分集的内容密钥。
+ // 播放模型就是 ResolvePlayback 连同 ErrDRMProtected 一起返回的那个。这是纯本地计算：
+ // 按官方播放器的方式从模型的 KeyMaterial 解包出密钥，不再发出任何请求。
+diff --git a/testdata/protocol/video-tab-playback.json b/testdata/protocol/video-tab-playback.json
+new file mode 100644
+index 0000000..664985a
+--- /dev/null
++++ b/testdata/protocol/video-tab-playback.json
+@@ -0,0 +1,11 @@
++{
++  "code": 0,
++  "message": "SUCCESS",
++  "data": {
++    "video_model_data": {
++      "7100000000000301": {
++        "video_model": "{\"status\":10,\"video_id\":\"v-video-tab\",\"media_type\":\"video\",\"video_duration\":42,\"url_expire\":1893456000,\"video_list\":{\"0\":{\"main_url\":\"https://media.invalid/video-tab-360.mp4\",\"video_meta\":{\"definition\":\"360p\",\"codec_type\":\"h264\",\"vwidth\":640,\"vheight\":360,\"bitrate\":400000}}}}"
++      }
++    }
++  }
++}

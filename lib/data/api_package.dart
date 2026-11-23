@@ -5,7 +5,13 @@ enum PlaybackProvider { openhongguo, legacy }
 
 /// A versioned data package. It cannot introduce code, origins or HTTP methods.
 final class ApiPackage {
-  ApiPackage._(this.version, this.search, this.recommendations, this.playback);
+  ApiPackage._(
+    this.version,
+    this.search,
+    this.recommendations,
+    this.playback,
+    this.theaterChannel,
+  );
 
   static const maxBytes = 16 * 1024;
   static const webHost = 'hongguoduanju.com';
@@ -18,6 +24,8 @@ final class ApiPackage {
   final String version;
   final Map<String, String> search, recommendations;
   final List<PlaybackProvider> playback;
+  final String theaterChannel;
+  static const theaterChannels = {'找剧', '首页真人剧', '首页漫剧'};
 
   static final bundled = ApiPackage._(
     '0.0.0',
@@ -37,22 +45,26 @@ final class ApiPackage {
       'items': 'related_list',
     },
     const [PlaybackProvider.openhongguo],
+    '找剧',
   );
 
   factory ApiPackage.decode(Uint8List bytes) {
     if (bytes.isEmpty || bytes.length > maxBytes) {
       throw const FormatException('Invalid API package size');
     }
-    final data = _section(jsonDecode(utf8.decode(bytes)), {
+    final decoded = jsonDecode(utf8.decode(bytes));
+    final schema = decoded is Map ? decoded['schema'] : null;
+    final data = _section(decoded, {
       'schema',
       'version',
       'search',
       'recommendations',
       'playback',
+      if (schema == 2) 'theater',
     });
     final version = data['version'];
     if (data['schema'] is! int ||
-        data['schema'] != 1 ||
+        (schema != 1 && schema != 2) ||
         version is! String ||
         !_version.hasMatch(version)) {
       throw const FormatException('Unsupported API package version');
@@ -95,7 +107,19 @@ final class ApiPackage {
       }
       playback.add(provider);
     }
-    return ApiPackage._(version, search, related, List.unmodifiable(playback));
+    final channel = schema == 2
+        ? _section(data['theater'], {'channel'})['channel']
+        : '找剧';
+    if (channel is! String || !theaterChannels.contains(channel)) {
+      throw const FormatException('Unsupported theater channel');
+    }
+    return ApiPackage._(
+      version,
+      search,
+      related,
+      List.unmodifiable(playback),
+      channel,
+    );
   }
 
   static bool isVersion(String value) => _version.hasMatch(value);

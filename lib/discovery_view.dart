@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'data/discovery_client.dart';
 import 'discovery_controller.dart';
 import 'domain/discovery.dart';
@@ -82,6 +83,12 @@ class _DiscoveryViewState extends State<DiscoveryView> {
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
+              if (c.client.theaterSupported)
+                _mode(
+                  DiscoveryMode.theater,
+                  '剧场',
+                  Icons.video_library_outlined,
+                ),
               _mode(
                 DiscoveryMode.ranking,
                 '榜单',
@@ -239,6 +246,18 @@ class _DiscoveryViewState extends State<DiscoveryView> {
                 ? 4
                 : 5;
             final width = (box.maxWidth - (columns - 1) * 16) / columns;
+            if (c.mode == DiscoveryMode.theater) {
+              return MasonryGridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: columns,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 20,
+                itemCount: c.items.length,
+                itemBuilder: (context, i) =>
+                    _tile(c.items[i], width, theater: true),
+              );
+            }
             return GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -255,7 +274,11 @@ class _DiscoveryViewState extends State<DiscoveryView> {
         ),
         if (!c.loading &&
             c.result?.hasMore == true &&
-            {DiscoveryMode.ranking, DiscoveryMode.comic}.contains(c.mode))
+            {
+              DiscoveryMode.theater,
+              DiscoveryMode.ranking,
+              DiscoveryMode.comic,
+            }.contains(c.mode))
           Center(
             child: Padding(
               padding: const EdgeInsets.all(24),
@@ -328,6 +351,8 @@ class _DiscoveryViewState extends State<DiscoveryView> {
 
   String _description() {
     switch (c.mode) {
+      case DiscoveryMode.theater:
+        return '${c.items.length} 部作品';
       case DiscoveryMode.ranking:
         return c.result?.updated.isNotEmpty == true
             ? c.result!.updated
@@ -364,150 +389,166 @@ class _DiscoveryViewState extends State<DiscoveryView> {
     ),
   );
 
-  Widget _tile(DramaSummary drama, double width) => Material(
-    color: Colors.transparent,
-    child: InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () =>
-          widget.onPlay == null ? _details(drama) : widget.onPlay!(drama),
-      onLongPress: () => _details(drama),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: width * 1.22,
-            width: double.infinity,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Container(
-                  clipBehavior: Clip.antiAlias,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE9E5E9),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x10000000),
-                        blurRadius: 14,
-                        offset: Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: drama.cover.isEmpty
-                      ? _placeholder()
-                      : Image.network(
-                          drama.cover,
-                          fit: BoxFit.cover,
-                          cacheWidth: 360,
-                          errorBuilder: (_, _, _) => _placeholder(),
-                        ),
-                ),
-                if (drama.rank > 0)
-                  Positioned(
-                    left: 9,
-                    top: 9,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 9,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: drama.rank <= 3 ? _accent : _ink,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '${drama.rank}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                if (drama.episodes > 0)
-                  Positioned(
-                    right: 8,
-                    bottom: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        '${drama.episodes} 集',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            drama.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              color: _ink,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            drama.metric.isNotEmpty
-                ? drama.metric
-                : drama.tags.take(3).join(' · '),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: _muted, fontSize: 11),
-          ),
-          const SizedBox(height: 6),
-          Row(
+  Widget _tile(DramaSummary drama, double width, {bool theater = false}) =>
+      Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () =>
+              widget.onPlay == null ? _details(drama) : widget.onPlay!(drama),
+          onLongPress: () => _details(drama),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: TextButton.icon(
-                  onPressed: () => widget.onPlay == null
-                      ? _details(drama)
-                      : widget.onPlay!(drama),
-                  icon: const Icon(Icons.play_arrow_rounded, size: 16),
-                  label: const Text('播放'),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    textStyle: Theme.of(
-                      context,
-                    ).textTheme.labelMedium?.copyWith(fontSize: 12),
-                  ),
+              SizedBox(
+                height:
+                    width *
+                    (theater ? (drama.vertical == false ? 1.18 : 1.42) : 1.22),
+                width: double.infinity,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE9E5E9),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x10000000),
+                            blurRadius: 14,
+                            offset: Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: drama.cover.isEmpty
+                          ? _placeholder()
+                          : Image.network(
+                              drama.cover,
+                              fit: BoxFit.cover,
+                              cacheWidth: 360,
+                              errorBuilder: (_, _, _) => _placeholder(),
+                            ),
+                    ),
+                    if (drama.rank > 0)
+                      Positioned(
+                        left: 9,
+                        top: 9,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: drama.rank <= 3 ? _accent : _ink,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${drama.rank}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (drama.episodes > 0)
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '${drama.episodes} 集',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              Expanded(
-                child: TextButton.icon(
-                  onPressed: widget.selectionDisabled
-                      ? null
-                      : () => widget.onPick(drama),
-                  icon: const Icon(Icons.merge_rounded, size: 14),
-                  label: const Text('拼接'),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    textStyle: Theme.of(
-                      context,
-                    ).textTheme.labelMedium?.copyWith(fontSize: 12),
+              const SizedBox(height: 10),
+              Text(
+                drama.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: _ink,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                drama.metric.isNotEmpty
+                    ? drama.metric
+                    : drama.tags.take(3).join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: _muted, fontSize: 11),
+              ),
+              if (theater && drama.intro.trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  drama.intro,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _muted,
+                    fontSize: 12,
+                    height: 1.35,
                   ),
                 ),
+              ],
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton.icon(
+                      onPressed: () => widget.onPlay == null
+                          ? _details(drama)
+                          : widget.onPlay!(drama),
+                      icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                      label: const Text('播放'),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        textStyle: Theme.of(
+                          context,
+                        ).textTheme.labelMedium?.copyWith(fontSize: 12),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: TextButton.icon(
+                      onPressed: widget.selectionDisabled
+                          ? null
+                          : () => widget.onPick(drama),
+                      icon: const Icon(Icons.merge_rounded, size: 14),
+                      label: const Text('拼接'),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        textStyle: Theme.of(
+                          context,
+                        ).textTheme.labelMedium?.copyWith(fontSize: 12),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-    ),
-  );
+        ),
+      );
 
   Widget _placeholder() =>
       const Center(child: Icon(Icons.movie_outlined, size: 36, color: _muted));

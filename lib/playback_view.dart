@@ -387,7 +387,7 @@ class _PlaybackScreenState extends State<PlaybackScreen>
         c.load(
           widget.summary.id,
           episode: point?.episode ?? 1,
-          episodeId: point?.episodeId ?? '',
+          episodeId: point?.episodeId ?? widget.summary.firstEpisodeId,
           start: Duration(milliseconds: point?.positionMs ?? 0),
         ),
       );

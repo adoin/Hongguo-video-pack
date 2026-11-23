@@ -62,6 +62,10 @@
 
 使用 Flutter 3.47.7 / Dart 3.13.5、Node.js 24、Java 21、Android SDK/NDK、Windows Visual Studio C++ 和 Inno Setup 6.5+ 构建工具。依赖由 `pubspec.lock` 固定。Windows 构建时将发现的 Node 可执行文件一并打包，目标电脑不依赖 PATH。
 
+构建剧场和播放组件前，先通过已登录的 GitHub CLI 和 Go 执行
+`pwsh -File scripts/prepare-openhongguo.ps1`。Android 构建加 `-Android`，
+先准备 SDK 再执行 `flutter pub get`。Windows 运行时不需要 Go。
+
 ```powershell
 flutter pub get
 flutter analyze

@@ -73,6 +73,15 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.0'
+          cache: false
+      - name: Prepare patched playback and theater SDK
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/prepare-openhongguo.ps1 -Android
       - run: flutter pub get
       - name: Configure release signing in runner temporary storage
         env:
@@ -117,6 +126,11 @@ jobs:
         with:
           name: android-arm64
           path: build/app/outputs/flutter-apk
+      - name: Prepare patched playback and theater SDK
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/prepare-openhongguo.ps1
       - run: flutter pub get
       - run: |
           flutter build windows --release --no-pub `

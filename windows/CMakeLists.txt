@@ -79,13 +79,17 @@ install(PROGRAMS "${HONGGUO_NODE_EXECUTABLE}" DESTINATION "${INSTALL_BUNDLE_LIB_
 find_program(HONGGUO_GO_EXECUTABLE NAMES go.exe go REQUIRED)
 set(PLAYBACK_BRIDGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/playback_bridge")
 set(PLAYBACK_BRIDGE_EXE "${CMAKE_CURRENT_BINARY_DIR}/openhongguo-playback.exe")
+set(PLAYBACK_KERNEL_STAMP "${CMAKE_CURRENT_SOURCE_DIR}/../.dart_tool/openhongguo-src/.hongputao-kernel")
+if(NOT EXISTS "${PLAYBACK_KERNEL_STAMP}")
+  message(FATAL_ERROR "Run scripts/prepare-openhongguo.ps1 before building Windows.")
+endif()
 add_custom_command(
   OUTPUT "${PLAYBACK_BRIDGE_EXE}"
   COMMAND "${CMAKE_COMMAND}" -E env CGO_ENABLED=0 GOWORK=off GOTOOLCHAIN=local
     "${HONGGUO_GO_EXECUTABLE}" build -mod=readonly -trimpath -ldflags "-s -w -H=windowsgui"
     -o "${PLAYBACK_BRIDGE_EXE}" .
   WORKING_DIRECTORY "${PLAYBACK_BRIDGE_DIR}"
-  DEPENDS "${PLAYBACK_BRIDGE_DIR}/main.go" "${PLAYBACK_BRIDGE_DIR}/go.mod" "${PLAYBACK_BRIDGE_DIR}/go.sum"
+  DEPENDS "${PLAYBACK_BRIDGE_DIR}/main.go" "${PLAYBACK_BRIDGE_DIR}/go.mod" "${PLAYBACK_BRIDGE_DIR}/go.sum" "${PLAYBACK_KERNEL_STAMP}"
   VERBATIM
 )
 add_custom_target(hongputao_playback_bridge ALL DEPENDS "${PLAYBACK_BRIDGE_EXE}")

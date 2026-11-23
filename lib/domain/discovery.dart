@@ -9,8 +9,12 @@ class DramaSummary {
     this.rank = 0,
     this.heat = '',
     this.plays = '',
+    this.firstEpisodeId = '',
+    this.vertical,
   });
   final String id, title, cover, intro, heat, plays;
+  final String firstEpisodeId;
+  final bool? vertical;
   final int episodes, rank;
   final List<String> tags;
   String get metric => heat.isNotEmpty
@@ -32,6 +36,8 @@ class DramaSummary {
         rank: rank,
         heat: heat ?? this.heat,
         plays: plays ?? this.plays,
+        firstEpisodeId: firstEpisodeId,
+        vertical: vertical,
       );
 }
 
@@ -46,12 +52,14 @@ class DiscoveryPage {
     this.canExpand = false,
     this.sourceTotal = 0,
     this.totalPagesKnown = true,
+    this.cursor,
   });
   final List<DramaSummary> items;
   final int page, pages, total;
   final String updated, scope;
   final bool canExpand;
   final bool totalPagesKnown;
+  final String? cursor;
   final int sourceTotal;
   bool get hasMore => page < pages;
 }

@@ -5,13 +5,15 @@ import 'data/discovery_client.dart';
 import 'domain/discovery.dart';
 import 'services/app_logs.dart';
 
-enum DiscoveryMode { ranking, search, comic, random, related }
+enum DiscoveryMode { theater, ranking, search, comic, random, related }
 
 class DiscoveryController extends ChangeNotifier {
-  DiscoveryController({DiscoveryClient? client})
-    : client = client ?? DiscoveryClient();
+  DiscoveryController({
+    DiscoveryClient? client,
+    this.mode = DiscoveryMode.ranking,
+  }) : client = client ?? DiscoveryClient();
   final DiscoveryClient client;
-  DiscoveryMode mode = DiscoveryMode.ranking;
+  DiscoveryMode mode;
   String board = 'hot-drama', category = 'comic-drama', query = '';
   String? relatedId, error;
   bool loading = false, expandedSearch = false;
@@ -20,6 +22,7 @@ class DiscoveryController extends ChangeNotifier {
   List<DramaSummary> items = [];
   int _request = 0;
   bool _disposed = false;
+  String? _theaterChannel;
   final _random = Random();
   final _seen = <String>{};
   final _randomPages = <String, int>{};
@@ -46,6 +49,7 @@ class DiscoveryController extends ChangeNotifier {
   }
 
   Future<void> refresh({bool more = false, int? searchPage}) async {
+    if (more && (loading || result?.hasMore != true)) return;
     final token = ++_request;
     final requestedMode = mode;
     final requestedCategory = category;
@@ -70,6 +74,15 @@ class DiscoveryController extends ChangeNotifier {
       final page = more && result != null ? result!.page + 1 : 1;
       DiscoveryPage data;
       switch (requestedMode) {
+        case DiscoveryMode.theater:
+          if (!more || _theaterChannel == null) {
+            _theaterChannel = client.theaterChannel;
+          }
+          data = await client.theater(
+            _theaterChannel!,
+            cursor: more ? result?.cursor : null,
+            page: page,
+          );
         case DiscoveryMode.ranking:
           data = await client.ranking(board, page: page);
         case DiscoveryMode.search:
@@ -111,7 +124,14 @@ class DiscoveryController extends ChangeNotifier {
       }
       final old = more ? items : <DramaSummary>[];
       final ids = old.map((d) => d.id).toSet();
-      items = [...old, ...rows.where((d) => ids.add(d.id))];
+      final fresh = rows.where((d) => ids.add(d.id)).toList(growable: false);
+      if (requestedMode == DiscoveryMode.theater &&
+          more &&
+          fresh.isEmpty &&
+          rows.isNotEmpty) {
+        throw StateError('剧场未返回新作品，请刷新重试');
+      }
+      items = [...old, ...fresh];
       result = data;
       if ({
             DiscoveryMode.search,
