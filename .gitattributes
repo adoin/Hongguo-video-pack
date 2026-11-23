@@ -1,0 +1,2 @@
+# SDK archives contain LF files. Keep patch context identical on Windows.
+scripts/patches/*.patch text eol=lf
