@@ -9,6 +9,8 @@ import '../domain/drama.dart';
 import 'request_signer.dart';
 import 'media_crypto.dart';
 import 'openhongguo_playback.dart';
+import 'api_package.dart';
+import '../services/api_packages.dart';
 import 'visitor_identity.dart';
 import '../services/app_logs.dart';
 
@@ -129,7 +131,8 @@ class HongguoClient {
           uri,
           body: body,
           headers: {
-            'User-Agent': 'com.phoenix.read/73532 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)',
+            'User-Agent':
+                'com.phoenix.read/73532 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)',
             'Accept': 'application/json',
             'Content-Type': 'application/json; charset=utf-8',
             'X-XS-From-Web': '0',
@@ -186,9 +189,26 @@ class HongguoClient {
     Episode episode, {
     String? seriesId,
   }) async {
-    if (_openHongguo && OpenHongguoPlayback.isSupported) {
-      return OpenHongguoPlayback.shared.resolve(episode);
+    if (!_openHongguo || !OpenHongguoPlayback.isSupported) {
+      return _legacyPlayback(episode);
     }
+    final providers = ApiPackages.shared.current.playback;
+    for (final provider in providers) {
+      try {
+        return await switch (provider) {
+          PlaybackProvider.openhongguo => OpenHongguoPlayback.shared.resolve(
+            episode,
+          ),
+          PlaybackProvider.legacy => _legacyPlayback(episode),
+        };
+      } catch (_) {
+        if (provider == providers.last) rethrow;
+      }
+    }
+    throw StateError('没有可用的播放来源');
+  }
+
+  Future<List<MediaVariant>> _legacyPlayback(Episode episode) async {
     final visitor = await identities.get();
     try {
       return await _fetchVariants(episode, visitor);

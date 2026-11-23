@@ -17,6 +17,7 @@ import 'domain/discovery.dart';
 import 'domain/drama.dart';
 import 'playback_view.dart';
 import 'services/app_storage.dart';
+import 'services/api_packages.dart';
 import 'services/playback_acceptance.dart';
 import 'watch_history.dart';
 import 'watch_history_view.dart';
@@ -108,7 +109,10 @@ Future<void> main(List<String> arguments) async {
       exit(1);
     }
   }
+  final apiReady = ApiPackages.shared.initialize();
+  await apiReady.timeout(const Duration(seconds: 2), onTimeout: () {});
   runApp(const StudioApp());
+  unawaited(apiReady.then((_) => ApiPackages.shared.refresh()));
 }
 
 class StudioApp extends StatelessWidget {

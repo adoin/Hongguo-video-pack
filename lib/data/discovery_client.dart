@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '../domain/discovery.dart';
 import 'hongguo_client.dart' show object, text, integer, Json;
 import 'app_search_client.dart';
 import 'signed_app_search.dart';
+import 'api_package.dart';
+import '../services/api_packages.dart';
 import '../services/app_logs.dart';
 
 /// Public catalogue pages only. Opening a result still loads the full episode
@@ -14,10 +17,13 @@ class DiscoveryClient {
   DiscoveryClient({
     http.Client? client,
     this.appSearch,
+    this.apiPackage,
     this.searchTimeout = const Duration(seconds: 15),
   }) : _http = client ?? LoggedHttpClient();
   final http.Client _http;
   AppSearchClient? appSearch;
+  final ApiPackage Function()? apiPackage;
+  ApiPackage get _rules => apiPackage?.call() ?? ApiPackages.shared.current;
   final Duration searchTimeout;
   Future<void>? _searchReady;
   bool _appUnavailable = false;
@@ -57,6 +63,7 @@ class DiscoveryClient {
       try {
         final request =
             http.AbortableRequest('GET', uri, abortTrigger: abort.future)
+              ..followRedirects = false
               ..headers.addAll(const {
                 'Accept': 'application/json',
                 'User-Agent': 'Mozilla/5.0',
@@ -65,7 +72,7 @@ class DiscoveryClient {
               });
         final response = await _http
             .send(request)
-            .then(http.Response.fromStream)
+            .then(_boundedWebResponse)
             .timeout(searchTimeout);
         if (attempt == 0 && {502, 503, 504}.contains(response.statusCode)) {
           await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -116,7 +123,7 @@ class DiscoveryClient {
   Future<List<DramaSummary>>? _index;
   DateTime? _indexTime;
   final _searches = <String, List<DramaSummary>>{};
-  final _webSessions = <String, Map<int, Set<String>>>{};
+  final _webSessions = <String, _WebSearchSession>{};
   final _details = <String, Future<Json?>>{};
 
   Future<List<DramaSummary>> _catalogue() async {
@@ -247,14 +254,12 @@ class DiscoveryClient {
       if (_webSessions.length >= 16 && !_webSessions.containsKey(key)) {
         _webSessions.remove(_webSessions.keys.first);
       }
-      final session = _webSessions.putIfAbsent(key, () => {});
-      final response = await _searchResponse(
-        Uri.https('hongguoduanju.com', '/api/search/result', {
-          'aid': '8662',
-          'query': keyword,
-          if (page > 1) 'page': '$page',
-        }),
+      final session = _webSessions.putIfAbsent(
+        key,
+        () => _WebSearchSession(_rules),
       );
+      final rules = session.rules;
+      final response = await _searchResponse(rules.searchUri(keyword, page));
       if (response.statusCode == 403) {
         throw StateError('搜索暂时需要来源验证，请稍后重试。');
       }
@@ -267,13 +272,13 @@ class DiscoveryClient {
       } on FormatException {
         throw const FormatException('搜索响应无效，请稍后重试。');
       }
-      if (data['searchList'] is! List ||
-          integer(data['pageNum']) != page ||
-          integer(data['totalPages']) < 0) {
+      if (data[rules.search['items']] is! List ||
+          integer(data[rules.search['currentPage']]) != page ||
+          integer(data[rules.search['totalPages']]) < 0) {
         throw const FormatException('搜索数据格式已变化，请稍后重试');
       }
       var rows = parseSummaries(
-        (data['searchList'] as List)
+        (data[rules.search['items']] as List)
             .where(
               (row) =>
                   object(row)['video_data'] is Map ||
@@ -285,14 +290,14 @@ class DiscoveryClient {
         throw StateError('搜索已被新请求替代');
       }
       final preceding = {
-        for (final entry in session.entries)
+        for (final entry in session.pages.entries)
           if (entry.key < page) ...entry.value,
       };
       final fresh = rows.where((row) => !preceding.contains(row.id)).toList();
       if (rows.isNotEmpty && fresh.isEmpty) {
         throw StateError('来源重复返回相同结果，请重新搜索。');
       }
-      session[page] = rows.map((row) => row.id).toSet();
+      session.pages[page] = rows.map((row) => row.id).toSet();
       rows = fresh;
       if (relatedTo != null) {
         rows = rows
@@ -309,9 +314,9 @@ class DiscoveryClient {
       return DiscoveryPage(
         rows,
         page: page,
-        pages: integer(data['totalPages']).clamp(page, 500),
-        total: integer(data['totalCount']),
-        sourceTotal: integer(data['totalCount']),
+        pages: integer(data[rules.search['totalPages']]).clamp(page, 500),
+        total: integer(data[rules.search['total']]),
+        sourceTotal: integer(data[rules.search['total']]),
         scope: '红果官网搜索',
       );
     }
@@ -450,7 +455,30 @@ class DiscoveryClient {
     if (!RegExp(r'^\d{1,32}$').hasMatch(id)) {
       throw const FormatException('剧集 ID 无效');
     }
-    final html = await _get('/detail', {'series_id': id});
+    final rules = _rules;
+    final abort = Completer<void>();
+    final request =
+        http.AbortableRequest(
+            'GET',
+            rules.recommendationsUri(id),
+            abortTrigger: abort.future,
+          )
+          ..followRedirects = false
+          ..headers.addAll({
+            'Accept': 'text/html',
+            'User-Agent': 'Mozilla/5.0',
+          });
+    final http.Response response;
+    try {
+      response = await _http
+          .send(request)
+          .then(_boundedWebResponse)
+          .timeout(searchTimeout);
+    } finally {
+      abort.complete();
+    }
+    if (response.statusCode != 200) throw StateError('相关剧集暂不可用');
+    final html = utf8.decode(response.bodyBytes);
     final page = routerPage(html, 'detail_page');
     final detail = object(page['seriesDetail']);
     if (text(detail['series_id_str'] ?? detail['series_id']) != id) {
@@ -478,8 +506,8 @@ class DiscoveryClient {
             continue;
           }
           final data = object(jsonDecode(values.first as String));
-          final groups = object(data['recommendationGroups']);
-          final rows = groups['related_list'];
+          final groups = object(data[rules.recommendations['group']]);
+          final rows = groups[rules.recommendations['items']];
           if (rows is List) {
             return parseSummaries(rows).where((row) => row.id != id).toList();
           }
@@ -520,6 +548,29 @@ class DiscoveryClient {
   }
 
   void close() => _http.close();
+}
+
+class _WebSearchSession {
+  _WebSearchSession(this.rules);
+  final ApiPackage rules;
+  final pages = <int, Set<String>>{};
+}
+
+Future<http.Response> _boundedWebResponse(
+  http.StreamedResponse response,
+) async {
+  final body = BytesBuilder(copy: false);
+  await for (final chunk in response.stream) {
+    if (chunk.length > 4 * 1024 * 1024 - body.length) {
+      throw const FormatException('来源响应超出限制');
+    }
+    body.add(chunk);
+  }
+  return http.Response.bytes(
+    body.takeBytes(),
+    response.statusCode,
+    headers: response.headers,
+  );
 }
 
 /// App covers can be signed HEIC/HEIF URLs. Changing their suffix invalidates

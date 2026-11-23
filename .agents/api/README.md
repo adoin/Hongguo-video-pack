@@ -1,5 +1,9 @@
 # 红果来源 API 文档
 
+客户端启动时可加载 [独立 API 规则包](https://github.com/adoin/Hongputao-api)。搜索请求参数及列表字段、推荐详情路径及字段、内置播放来源顺序可以独立更新。网页来源域名、支持的解析器和签名实现属于客户端。包以 Tag 自动部署到 Release 和静态更新入口，客户端校验包大小、摘要、版本和字段后才替换已安装规则。
+
+发行版通过仓库 Actions 变量 `HONGPUTAO_API_FEED`、`HONGPUTAO_API_FALLBACK_FEED` 固定 EdgeOne 与 VPS 的公开 HTTPS `feed.json`。超时、非 200、重定向或内容验证失败时依次尝试备用源。配置任一地址的客户端不再直接访问 GitHub；两个地址都没配置时，使用 Release 或 Pages 作为开发兜底。包更新故障不影响已有配置和本地播放。
+
 核对日期：2026-11-13（Asia/Shanghai）。当前播放 GET 入口及完整 Argus/Ladon 签名已独立验证；首次注册、搜索 JSON 接口与详情相关推荐保留各页日期，不声称覆盖官方全部 API。
 
 | 文档 | 内容 |

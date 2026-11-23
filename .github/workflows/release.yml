@@ -19,6 +19,8 @@ concurrency:
 
 env:
   FLUTTER_VERSION: '3.47.7'
+  HONGPUTAO_API_FEED: ${{ vars.HONGPUTAO_API_FEED }}
+  HONGPUTAO_API_FALLBACK_FEED: ${{ vars.HONGPUTAO_API_FALLBACK_FEED }}
 
 jobs:
   quality:
@@ -79,7 +81,10 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: python3 scripts/configure-ci-signing.py
-      - run: flutter build apk --release --target-platform android-arm64 --no-pub
+      - run: |
+          flutter build apk --release --target-platform android-arm64 --no-pub \
+            "--dart-define=HONGPUTAO_API_FEED=$HONGPUTAO_API_FEED" \
+            "--dart-define=HONGPUTAO_API_FALLBACK_FEED=$HONGPUTAO_API_FALLBACK_FEED"
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: android-arm64
@@ -113,7 +118,10 @@ jobs:
           name: android-arm64
           path: build/app/outputs/flutter-apk
       - run: flutter pub get
-      - run: flutter build windows --release --no-pub
+      - run: |
+          flutter build windows --release --no-pub `
+            "--dart-define=HONGPUTAO_API_FEED=$env:HONGPUTAO_API_FEED" `
+            "--dart-define=HONGPUTAO_API_FALLBACK_FEED=$env:HONGPUTAO_API_FALLBACK_FEED"
       - name: Check compiled taskbar icon transparency
         run: python scripts/check-windows-icon.py build/windows/x64/runner/Release/hongguo_studio.exe
       - name: Package installer, APK, portable backup and corresponding source
